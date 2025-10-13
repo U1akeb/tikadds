@@ -1,5 +1,6 @@
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import { Sidebar } from "@/components/Sidebar/Sidebar";
 
 const NotFound = () => {
   const location = useLocation();
@@ -9,14 +10,15 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-gray-600">Oops! Page not found</p>
-        <a href="/" className="text-blue-500 underline hover:text-blue-700">
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-4 px-4 text-center pt-20 md:pt-0 md:pl-28">
+        <h1 className="text-5xl font-bold">404</h1>
+        <p className="text-muted-foreground">The page you&apos;re looking for doesn&apos;t exist.</p>
+        <a href="/" className="text-primary underline">
           Return to Home
         </a>
-      </div>
+      </main>
     </div>
   );
 };

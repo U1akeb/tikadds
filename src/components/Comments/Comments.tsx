@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Comment {
   id: string;
@@ -45,6 +46,14 @@ const mockComments: Comment[] = [
 export function Comments({ isOpen, onClose, videoId }: CommentsProps) {
   const [comments, setComments] = useState<Comment[]>(mockComments);
   const [newComment, setNewComment] = useState("");
+  const isMobile = useIsMobile();
+
+  const sheetClasses = useMemo(() => {
+    if (isMobile) {
+      return "h-[70vh] p-0";
+    }
+    return "w-[420px] sm:w-[480px] p-0";
+  }, [isMobile]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,8 +73,8 @@ export function Comments({ isOpen, onClose, videoId }: CommentsProps) {
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="bottom" className="h-[80vh] p-0">
-        <SheetHeader className="p-4 border-b border-border">
+      <SheetContent side={isMobile ? "bottom" : "right"} className={sheetClasses}>
+        <SheetHeader className="p-4 border-b border-border sticky top-0 bg-card z-10">
           <div className="flex items-center justify-between">
             <SheetTitle>{comments.length} Comments</SheetTitle>
             <Button variant="ghost" size="icon" onClick={onClose}>
@@ -74,7 +83,7 @@ export function Comments({ isOpen, onClose, videoId }: CommentsProps) {
           </div>
         </SheetHeader>
 
-        <div className="flex flex-col h-[calc(80vh-5rem)]">
+        <div className="flex flex-col h-full">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {comments.map((comment) => (
               <div key={comment.id} className="flex gap-3 animate-fade-in">

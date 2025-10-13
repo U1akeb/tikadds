@@ -5,7 +5,7 @@ const Index = () => {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 pl-20">
+      <main className="flex-1 pt-20 md:pt-0 md:pl-28">
         <Feed />
       </main>
     </div>

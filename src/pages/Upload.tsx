@@ -40,8 +40,8 @@ export default function Upload() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <div className="flex-1 p-6 pl-28">
-      <div className="max-w-4xl mx-auto">
+      <div className="flex-1 pt-20 md:pt-0 md:pl-28">
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8 animate-fade-in-up">
           <h1 className="text-4xl font-bold mb-2 bg-gradient-primary bg-clip-text text-transparent">
             Upload Video

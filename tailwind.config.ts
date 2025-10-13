@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -74,24 +75,24 @@ export default {
         },
         "fade-in": {
           "0%": { opacity: "0", transform: "translateY(10px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" }
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
         "fade-in-up": {
           "0%": { opacity: "0", transform: "translateY(20px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" }
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
         "scale-in": {
           "0%": { transform: "scale(0.95)", opacity: "0" },
-          "100%": { transform: "scale(1)", opacity: "1" }
+          "100%": { transform: "scale(1)", opacity: "1" },
         },
         "pulse-glow": {
           "0%, 100%": { boxShadow: "0 0 20px hsl(346 77% 50% / 0.3)" },
-          "50%": { boxShadow: "0 0 40px hsl(346 77% 50% / 0.6)" }
+          "50%": { boxShadow: "0 0 40px hsl(346 77% 50% / 0.6)" },
         },
         "like-pop": {
           "0%": { transform: "scale(0)" },
           "50%": { transform: "scale(1.3)" },
-          "100%": { transform: "scale(1)" }
+          "100%": { transform: "scale(1)" },
         },
       },
       animation: {
@@ -105,5 +106,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;
