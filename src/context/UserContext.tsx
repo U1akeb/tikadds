@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, ReactNode, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { isAdminEmail } from "@/lib/auth";
+import { supabase } from "@/supabaseClient";
 
 export type UserRole = "creator" | "advertiser" | "admin";
 
@@ -67,11 +68,15 @@ export interface CreatorProfile {
 export type CurrentUser = CreatorProfile;
 
 interface RegisterCreatorPayload {
+  id?: string;
   name: string;
   username: string;
   email?: string;
   avatar?: string;
   role?: UserRole;
+  bio?: string;
+  focus?: string;
+  location?: string;
 }
 
 interface UserContextValue {
@@ -83,7 +88,7 @@ interface UserContextValue {
   updatePinnedVideos: (videoIds: string[]) => void;
   registerCreator: (payload: RegisterCreatorPayload) => CreatorProfile;
   setCurrentUserId: (id: string) => void;
-  toggleFollow: (targetId: string) => void;
+  toggleFollow: (targetId: string) => Promise<void>;
   isFollowing: (targetId: string) => boolean;
   getFollowersCount: (targetId: string) => number;
   getFollowingCount: (sourceId: string) => number;
@@ -320,6 +325,17 @@ const createId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
+const createDefaultStats = (role: UserRole): CreatorStats => ({
+  videos: 0,
+  likes: 0,
+  shares: 0,
+  comments: 0,
+  earnings: role === "creator" || role === "admin" ? 0 : undefined,
+  jobsPosted: role === "advertiser" ? 0 : undefined,
+  pendingEarnings: role === "creator" || role === "admin" ? 0 : undefined,
+  submittedJobs: role === "creator" || role === "admin" ? 0 : undefined,
+});
+
 const UserContext = createContext<UserContextValue | null>(null);
 
 export function UserProvider({ children }: { children: ReactNode }) {
@@ -514,6 +530,97 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, [creators, currentUserId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadProfiles = async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, username, display_name, avatar_url, bio, role, focus, location");
+      if (error) {
+        console.error("Failed to fetch profiles", error);
+        toast.error("Unable to load profiles from Supabase");
+        return;
+      }
+      if (cancelled || !data) {
+        return;
+      }
+
+      setCreators((prev) => {
+        const byId = new Map(prev.map((creator) => [creator.id, creator]));
+
+        data.forEach((row) => {
+          const existing = byId.get(row.id);
+          const role = (row.role as UserRole | null) ?? existing?.role ?? "creator";
+          const username = row.username?.trim() || existing?.username || `user-${row.id.slice(0, 6)}`;
+          const name = row.display_name?.trim() || existing?.name || username;
+          const avatar = row.avatar_url?.trim() || existing?.avatar ||
+            `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=B8DBD9`;
+          const baseStats = existing?.stats ?? createDefaultStats(role);
+
+          const updated: CreatorProfile = {
+            id: row.id,
+            name,
+            username,
+            email: existing?.email,
+            role,
+            avatar,
+            bio: row.bio ?? existing?.bio ?? (role === "advertiser" ? "New advertiser on Ad Spark." : "New creator on Ad Spark."),
+            focus: row.focus ?? existing?.focus,
+            location: row.location ?? existing?.location,
+            stats: baseStats,
+            videos: existing?.videos ?? [],
+            pinnedVideoIds: existing?.pinnedVideoIds ?? [],
+            lastProfileUpdate: existing?.lastProfileUpdate ?? new Date().toISOString(),
+            warnings: existing?.warnings ?? [],
+            banInfo: existing?.banInfo ?? { isBanned: false },
+          };
+
+          byId.set(updated.id, updated);
+        });
+
+        return Array.from(byId.values());
+      });
+    };
+
+    void loadProfiles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFollows = async () => {
+      const { data, error } = await supabase.from("follows").select("follower_id, following_id");
+      if (error) {
+        console.error("Failed to fetch follows", error);
+        toast.error("Unable to load follow data");
+        return;
+      }
+      if (cancelled || !data) {
+        return;
+      }
+
+      setFollowMap((prev) => {
+        const next: FollowMap = { ...prev };
+        data.forEach(({ follower_id, following_id }) => {
+          if (!next[following_id]) {
+            next[following_id] = new Set();
+          }
+          next[following_id]!.add(follower_id);
+        });
+        return next;
+      });
+    };
+
+    void loadFollows();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const normalizeUsername = useCallback((value: string) => value.trim().toLowerCase(), []);
 
   const isUsernameAvailable = useCallback(
@@ -537,31 +644,51 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return { ...base };
   }, [creators, currentUserId]);
 
-  const setUserRole = useCallback((role: UserRole) => {
-    setCreators((prev) =>
-      prev.map((creator) => {
-        if (creator.id !== currentUserId) {
-          return creator;
+  const setUserRole = useCallback(
+    (role: UserRole) => {
+      let appliedRole: UserRole | null = null;
+      setCreators((prev) =>
+        prev.map((creator) => {
+          if (creator.id !== currentUserId) {
+            return creator;
+          }
+
+          const adminEmail = isAdminEmail(creator.email);
+          const enforcedRole: UserRole = !adminEmail && role === "admin" ? creator.role : role;
+          appliedRole = enforcedRole;
+
+          return {
+            ...creator,
+            role: enforcedRole,
+            stats:
+              enforcedRole === "creator"
+                ? { ...creator.stats, jobsPosted: creator.stats.jobsPosted ?? 0 }
+                : {
+                    ...creator.stats,
+                    earnings: creator.stats.earnings,
+                    pendingEarnings: creator.stats.pendingEarnings,
+                  },
+          };
+        }),
+      );
+
+      if (!appliedRole) {
+        return;
+      }
+
+      void (async () => {
+        const { error } = await supabase
+          .from("users")
+          .update({ role: appliedRole, updated_at: new Date().toISOString() })
+          .eq("id", currentUserId);
+        if (error) {
+          console.error("Failed to update role", error);
+          toast.error("Unable to update role right now");
         }
-
-        const adminEmail = isAdminEmail(creator.email);
-        const enforcedRole: UserRole = !adminEmail && role === "admin" ? creator.role : role;
-
-        return {
-          ...creator,
-          role: enforcedRole,
-          stats:
-            enforcedRole === "creator"
-              ? { ...creator.stats, jobsPosted: creator.stats.jobsPosted ?? 0 }
-              : {
-                  ...creator.stats,
-                  earnings: creator.stats.earnings,
-                  pendingEarnings: creator.stats.pendingEarnings,
-                },
-        };
-      }),
-    );
-  }, [currentUserId]);
+      })();
+    },
+    [currentUserId],
+  );
 
   const updateProfile = useCallback<UserContextValue["updateProfile"]>(
     (data) => {
@@ -628,6 +755,33 @@ export function UserProvider({ children }: { children: ReactNode }) {
         ),
       );
 
+      const supabaseUpdate: Record<string, unknown> = {
+        updated_at: new Date(now).toISOString(),
+      };
+      if (updates.name) {
+        supabaseUpdate.display_name = updates.name;
+      }
+      if (updates.username) {
+        supabaseUpdate.username = updates.username;
+      }
+      if (data.avatar !== undefined) {
+        supabaseUpdate.avatar_url = updates.avatar ?? currentUser.avatar;
+      }
+      if (data.bio !== undefined) {
+        supabaseUpdate.bio = updates.bio ?? "";
+      }
+
+      void (async () => {
+        const { error } = await supabase
+          .from("users")
+          .update(supabaseUpdate)
+          .eq("id", currentUserId);
+        if (error) {
+          console.error("Failed to update profile", error);
+          toast.error("Unable to sync profile changes");
+        }
+      })();
+
       toast.success("Profile updated");
     },
     [currentUser, currentUserId, isUsernameAvailable],
@@ -647,7 +801,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [currentUserId]);
 
   const registerCreator = useCallback<UserContextValue["registerCreator"]>((payload) => {
-    const id = createId();
+    const id = payload.id ?? createId();
     const requestedRole = payload.role ?? "creator";
     const adminEmail = isAdminEmail(payload.email);
     const enforcedRole: UserRole = !adminEmail && requestedRole === "admin" ? "creator" : requestedRole;
@@ -675,9 +829,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
         payload.avatar ??
         `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=B8DBD9`,
       bio:
-        enforcedRole === "creator" || enforcedRole === "admin"
+        payload.bio ??
+        (enforcedRole === "creator" || enforcedRole === "admin"
           ? "New creator on Ad Spark."
-          : "New advertiser on Ad Spark.",
+          : "New advertiser on Ad Spark."),
+      focus: payload.focus,
+      location: payload.location,
       stats: {
         videos: 0,
         likes: 0,
@@ -695,25 +852,95 @@ export function UserProvider({ children }: { children: ReactNode }) {
       banInfo: { isBanned: false },
     };
 
-    setCreators((prev) => [...prev, newCreator]);
-    setFollowMap((prev) => ({ ...prev, [id]: new Set() }));
+    setCreators((prev) => {
+      const exists = prev.some((creator) => creator.id === id);
+      if (exists) {
+        return prev.map((creator) => (creator.id === id ? newCreator : creator));
+      }
+      return [...prev, newCreator];
+    });
+    setFollowMap((prev) => ({ ...prev, [id]: prev[id] ?? new Set() }));
+
+    void (async () => {
+      const { error } = await supabase
+        .from("users")
+        .upsert(
+          {
+            id,
+            username: desiredUsername,
+            display_name: displayName,
+            avatar_url: newCreator.avatar,
+            bio: newCreator.bio,
+            role: enforcedRole,
+            focus: newCreator.focus,
+            location: newCreator.location,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" },
+        );
+      if (error) {
+        console.error("Failed to upsert user profile", error);
+        toast.error("Failed to sync profile with Supabase");
+      }
+    })();
+
     return newCreator;
   }, [isUsernameAvailable]);
 
-  const toggleFollow = useCallback<UserContextValue["toggleFollow"]>((targetId) => {
-    if (targetId === currentUserId) return;
-    setFollowMap((prev) => {
-      const next = { ...prev };
-      const followers = new Set(next[targetId] ?? []);
-      if (followers.has(currentUserId)) {
-        followers.delete(currentUserId);
+  const toggleFollow = useCallback<UserContextValue["toggleFollow"]>(
+    async (targetId) => {
+      if (targetId === currentUserId) return;
+
+      const isCurrentlyFollowing = Boolean(followMap[targetId]?.has(currentUserId));
+
+      setFollowMap((prev) => {
+        const next = { ...prev };
+        const followers = new Set(next[targetId] ?? []);
+        if (followers.has(currentUserId)) {
+          followers.delete(currentUserId);
+        } else {
+          followers.add(currentUserId);
+        }
+        next[targetId] = followers;
+        return next;
+      });
+
+      if (isCurrentlyFollowing) {
+        const { error } = await supabase
+          .from("follows")
+          .delete()
+          .match({ follower_id: currentUserId, following_id: targetId });
+        if (error) {
+          console.error("Failed to unfollow", error);
+          toast.error("Unable to unfollow right now");
+          setFollowMap((prev) => {
+            const next = { ...prev };
+            const followers = new Set(next[targetId] ?? []);
+            followers.add(currentUserId);
+            next[targetId] = followers;
+            return next;
+          });
+        }
       } else {
-        followers.add(currentUserId);
+        const { error } = await supabase.from("follows").insert({
+          follower_id: currentUserId,
+          following_id: targetId,
+        });
+        if (error) {
+          console.error("Failed to follow", error);
+          toast.error("Unable to follow right now");
+          setFollowMap((prev) => {
+            const next = { ...prev };
+            const followers = new Set(next[targetId] ?? []);
+            followers.delete(currentUserId);
+            next[targetId] = followers;
+            return next;
+          });
+        }
       }
-      next[targetId] = followers;
-      return next;
-    });
-  }, [currentUserId]);
+    },
+    [currentUserId, followMap],
+  );
 
   const deleteCreatorById = useCallback<UserContextValue["deleteCreatorById"]>((id) => {
     let removed: CreatorProfile | null = null;
@@ -755,6 +982,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
       return prevId;
     });
+
+    void (async () => {
+      const { error } = await supabase.from("users").delete().eq("id", id);
+      if (error) {
+        console.error("Failed to delete user profile", error);
+        toast.error("Unable to remove profile from Supabase");
+      }
+    })();
 
     return removed;
   }, []);

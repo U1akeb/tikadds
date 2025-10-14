@@ -2,21 +2,8 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { toast } from "sonner";
 import { useUser } from "./UserContext";
 import { isAdminEmail } from "@/lib/auth";
-import { auth, googleProvider } from "@/firebaseConfig";
-import {
-  EmailAuthProvider,
-  User as FirebaseUser,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  reauthenticateWithCredential,
-  sendEmailVerification,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updatePassword,
-  updateProfile,
-} from "firebase/auth";
-import { FirebaseError } from "firebase/app";
+import { supabase } from "@/supabaseClient";
+import type { Session, User as SupabaseUser } from "@supabase/supabase-js";
 
 type AuthProviderType = "email" | "google" | "facebook";
 
@@ -25,7 +12,6 @@ interface AuthUser {
   email: string;
   provider: AuthProviderType;
   creatorId: string;
-  password?: string;
   status?: "active" | "banned";
   banReason?: string;
   bannedUntil?: string | null;
@@ -47,7 +33,6 @@ const areAuthUsersEqual = (left: AuthUser, right: AuthUser) =>
   left.email === right.email &&
   left.provider === right.provider &&
   left.creatorId === right.creatorId &&
-  left.password === right.password &&
   left.status === right.status &&
   left.banReason === right.banReason &&
   left.bannedUntil === right.bannedUntil &&
@@ -76,41 +61,6 @@ interface AuthContextValue {
 
 const USERS_STORAGE_KEY = "adspark-auth-users";
 const SESSION_STORAGE_KEY = "adspark-auth-session";
-
-const authSeed: AuthUser[] = [
-  {
-    id: "auth-creator-pro",
-    email: "creativepro@example.com",
-    provider: "email",
-    password: "password123",
-    creatorId: "creator-pro",
-    status: "active",
-  },
-  {
-    id: "auth-brand-master",
-    email: "brandmaster@example.com",
-    provider: "email",
-    password: "password123",
-    creatorId: "brand-master",
-    status: "active",
-  },
-  {
-    id: "auth-fearless-2",
-    email: "fearlessbeke2@gmail.com",
-    provider: "email",
-    password: "admin123",
-    creatorId: "admin-fearless-2",
-    status: "active",
-  },
-  {
-    id: "auth-fearless-7",
-    email: "fearlessbeke7@gmail.com",
-    provider: "email",
-    password: "admin123",
-    creatorId: "admin-fearless-7",
-    status: "active",
-  },
-];
 
 const readStoredUsers = (): AuthUser[] | null => {
   if (typeof window === "undefined") {
@@ -153,34 +103,27 @@ const readStoredSession = (): SessionState => {
   }
 };
 
-const mapFirebaseProvider = (user: FirebaseUser): AuthProviderType => {
-  const providerId = user.providerData[0]?.providerId;
-  if (providerId === "google.com") {
+const mapSupabaseProvider = (user: SupabaseUser): AuthProviderType => {
+  const provider = user.app_metadata?.provider;
+  if (provider === "google") {
     return "google";
+  }
+  if (provider === "facebook") {
+    return "facebook";
   }
   return "email";
 };
 
 const usernameFromEmail = (email: string) => email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
 
-const formatFirebaseError = (error: unknown) => {
-  if (error instanceof FirebaseError) {
-    switch (error.code) {
-      case "auth/email-already-in-use":
-        return "An account with this email already exists";
-      case "auth/invalid-email":
-        return "Enter a valid email address";
-      case "auth/invalid-credential":
-      case "auth/wrong-password":
-        return "Invalid email or password";
-      case "auth/user-disabled":
-        return "This account has been disabled";
-      case "auth/user-not-found":
-        return "No account found with these credentials";
-      case "auth/popup-closed-by-user":
-        return "Popup closed before completing sign in";
-      default:
-        return error.message;
+const formatSupabaseError = (error: unknown) => {
+  if (error && typeof error === "object") {
+    const maybe = error as { message?: string; code?: string };
+    if (maybe.code === "over_email_send_rate_limit") {
+      return "Too many requests. Try again in a moment.";
+    }
+    if (typeof maybe.message === "string" && maybe.message.trim().length > 0) {
+      return maybe.message;
     }
   }
   if (error instanceof Error) {
@@ -217,14 +160,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [users, setUsers] = useState<AuthUser[]>(() => {
     const stored = readStoredUsers();
-    const byId = new Map<string, AuthUser>();
-    authSeed.forEach((user) => byId.set(user.id, user));
-    stored?.forEach((user) => {
-      if (user?.id && user.email) {
-        byId.set(user.id, user);
-      }
-    });
-    return Array.from(byId.values()).map((user) => normalizeAuthUser(user));
+    if (!stored) {
+      return [];
+    }
+    return stored.map((user) => normalizeAuthUser(user));
   });
 
   const initialSession = useMemo<SessionState>(() => readStoredSession(), []);
@@ -268,65 +207,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const ensureAuthUser = useCallback(
     (
-      firebaseUser: FirebaseUser,
+      supabaseUser: SupabaseUser,
       provider: AuthProviderType,
       options?: { name?: string; username?: string },
     ) => {
-      const rawEmail = firebaseUser.email?.trim();
+      const rawEmail = supabaseUser.email?.trim();
       if (!rawEmail) {
         toast.error("Your account is missing an email address");
         return null;
       }
 
       const email = rawEmail.toLowerCase();
-      const uid = firebaseUser.uid;
+      const uid = supabaseUser.id;
 
       const existing =
         users.find((user) => user.id === uid) ?? users.find((user) => user.email === email) ?? null;
 
       let creatorId = existing?.creatorId;
+      let profile = creatorId ? creators.find((creator) => creator.id === creatorId) : undefined;
 
       if (!creatorId) {
         const matchedCreator = creators.find(
           (creator) => creator.email && creator.email.toLowerCase() === email,
         );
-        const profile =
+        profile =
           matchedCreator ??
           registerCreator({
-            name: options?.name ?? firebaseUser.displayName ?? usernameFromEmail(email),
+            id: uid,
+            name:
+              options?.name ??
+              supabaseUser.user_metadata?.full_name ??
+              supabaseUser.user_metadata?.name ??
+              usernameFromEmail(email),
             username: options?.username ?? usernameFromEmail(email),
             email,
             role: isAdminEmail(email) ? "admin" : "creator",
-            avatar: firebaseUser.photoURL ?? undefined,
+            avatar: supabaseUser.user_metadata?.avatar_url ?? undefined,
+            bio: supabaseUser.user_metadata?.bio,
+            focus: supabaseUser.user_metadata?.focus,
+            location: supabaseUser.user_metadata?.location,
           });
         creatorId = profile.id;
       }
 
-      const base: AuthUser = {
+      const displayName =
+        options?.name ??
+        supabaseUser.user_metadata?.full_name ??
+        supabaseUser.user_metadata?.name ??
+        supabaseUser.user_metadata?.user_name ??
+        existing?.displayName ??
+        null;
+
+      const normalized = normalizeAuthUser({
+        ...(existing ?? {}),
         id: uid,
         email,
         provider,
         creatorId,
-        password: existing?.password,
+        displayName,
+        photoURL: supabaseUser.user_metadata?.avatar_url ?? existing?.photoURL ?? null,
+        emailVerified: Boolean(supabaseUser.email_confirmed_at),
         status: existing?.status ?? "active",
         banReason: existing?.banReason,
         bannedUntil: existing?.bannedUntil ?? null,
         banIssuedAt: existing?.banIssuedAt,
-        displayName: firebaseUser.displayName ?? existing?.displayName ?? null,
-        photoURL: firebaseUser.photoURL ?? existing?.photoURL ?? null,
-        emailVerified: firebaseUser.emailVerified,
-      };
-
-      const normalized = normalizeAuthUser(base);
+      } as AuthUser);
 
       let nextUser: AuthUser | null = normalized;
       setUsers((prev) => {
         const idx = prev.findIndex((user) => user.id === normalized.id);
         if (idx === -1) {
           const filtered = prev.filter((user) => user.email !== normalized.email);
-          if (filtered.length === prev.length) {
-            return [...prev, normalized];
-          }
           return [...filtered, normalized];
         }
 
@@ -341,35 +292,131 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return clone;
       });
 
+      const syncProfile = profile ?? creators.find((creator) => creator.id === creatorId);
+      if (syncProfile) {
+        void (async () => {
+          const { error } = await supabase
+            .from("users")
+            .upsert(
+              {
+                id: uid,
+                username: syncProfile.username,
+                display_name: syncProfile.name,
+                avatar_url: syncProfile.avatar,
+                bio: syncProfile.bio,
+                role: syncProfile.role,
+                focus: syncProfile.focus,
+                location: syncProfile.location,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "id" },
+            );
+          if (error) {
+            console.error("Failed to sync Supabase profile", error);
+          }
+        })();
+      }
+
       return nextUser;
     },
     [creators, normalizeAuthUser, registerCreator, users],
   );
 
+  const syncSession = useCallback(
+    async (supabaseSession: Session | null, phase: "init" | "event" = "event") => {
+      const supabaseUser = supabaseSession?.user ?? null;
+      if (!supabaseUser) {
+        setCurrentAuthId(null);
+        setSession({ mode: "guest" });
+        return;
+      }
+
+      if (!supabaseUser.email_confirmed_at) {
+        if (phase === "event") {
+          toast.info("Please verify your email before signing in.");
+        }
+        await supabase.auth.signOut();
+        return;
+      }
+
+      const provider = mapSupabaseProvider(supabaseUser);
+      const synced = ensureAuthUser(supabaseUser, provider);
+      if (!synced) {
+        await supabase.auth.signOut();
+        return;
+      }
+
+      if (synced.status === "banned") {
+        toast.error(
+          synced.bannedUntil
+            ? `This account is banned until ${new Date(synced.bannedUntil).toLocaleString()}`
+            : "This account has been permanently banned.",
+        );
+        await supabase.auth.signOut();
+        return;
+      }
+
+      applyAuthUser(synced);
+    },
+    [applyAuthUser, ensureAuthUser],
+  );
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      void syncSession(data.session, "init");
+    });
+  }, [syncSession]);
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_event, supabaseSession) => {
+      void syncSession(supabaseSession);
+    });
+
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, [syncSession]);
+
   const loginWithEmail = useCallback<AuthContextValue["loginWithEmail"]>(
     async (email, password) => {
       const normalizedEmail = email.trim().toLowerCase();
       try {
-        const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-        const provider = mapFirebaseProvider(credential.user);
-        await credential.user.reload();
-        if (!credential.user.emailVerified) {
-          try {
-            await sendEmailVerification(credential.user);
-            toast.info(`Verify your email. A verification link was sent to ${credential.user.email ?? normalizedEmail}.`);
-          } catch (verificationError) {
-            toast.error(formatFirebaseError(verificationError));
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        });
+
+        if (error) {
+          const message = error.message?.toLowerCase() ?? "";
+          if (message.includes("email") && message.includes("confirm")) {
+            await supabase.auth.resend({ type: "signup", email: normalizedEmail });
+            toast.info("Verification email sent! Check your inbox.");
+          } else {
+            toast.error(formatSupabaseError(error));
           }
-          await signOut(auth);
           return false;
         }
-        const synced = ensureAuthUser(credential.user, provider);
+
+        const user = data.user;
+        if (!user) {
+          toast.error("Unable to sign in. Try again.");
+          return false;
+        }
+
+        if (!user.email_confirmed_at) {
+          toast.info("Please verify your email before signing in.");
+          return false;
+        }
+
+        const provider = mapSupabaseProvider(user);
+        const synced = ensureAuthUser(user, provider);
         if (!synced) {
-          await signOut(auth);
+          await supabase.auth.signOut();
           return false;
         }
+
         if (synced.status === "banned") {
-          await signOut(auth);
+          await supabase.auth.signOut();
           toast.error(
             synced.bannedUntil
               ? `This account is banned until ${new Date(synced.bannedUntil).toLocaleString()}`
@@ -377,11 +424,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
           return false;
         }
+
         applyAuthUser(synced);
         toast.success("Logged in successfully");
         return true;
       } catch (error) {
-        toast.error(formatFirebaseError(error));
+        toast.error(formatSupabaseError(error));
         return false;
       }
     },
@@ -392,6 +440,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async ({ name, username, email, password }) => {
       const normalizedEmail = email.trim().toLowerCase();
       const trimmedUsername = username.trim();
+      const trimmedName = name.trim();
 
       if (!trimmedUsername) {
         toast.error("Username is required");
@@ -405,28 +454,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-        const trimmedName = name.trim();
-        if (trimmedName) {
-          await updateProfile(credential.user, { displayName: trimmedName });
-        }
-        await sendEmailVerification(credential.user);
-
-        const synced = ensureAuthUser(credential.user, "email", {
-          name: trimmedName || "New Creator",
-          username: trimmedUsername,
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              full_name: trimmedName || trimmedUsername,
+              username: trimmedUsername,
+            },
+          },
         });
 
-        if (!synced) {
-          await signOut(auth);
+        if (error) {
+          toast.error(formatSupabaseError(error));
           return false;
         }
 
-        try {
-          await signOut(auth);
-        } catch {
-          // ignore
+        if (data.user) {
+          ensureAuthUser(data.user, "email", {
+            name: trimmedName || "New Creator",
+            username: trimmedUsername,
+          });
         }
+
+        await supabase.auth.signOut();
 
         setCurrentAuthId(null);
         setSession({ mode: "guest" });
@@ -439,11 +491,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         toast.info("Verification email sent! Check your inbox.");
         return true;
       } catch (error) {
-        toast.error(formatFirebaseError(error));
+        toast.error(formatSupabaseError(error));
         return false;
       }
     },
-    [creators, ensureAuthUser, setCurrentAuthId, setCurrentUserId, setSession],
+    [creators, ensureAuthUser, setCurrentUserId],
   );
 
   const loginWithProvider = useCallback<AuthContextValue["loginWithProvider"]>(
@@ -454,74 +506,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const result = await signInWithPopup(auth, googleProvider);
-        const synced = ensureAuthUser(result.user, "google");
-        if (!synced) {
-          await signOut(auth);
-          return false;
-        }
-        if (synced.status === "banned") {
-          await signOut(auth);
-          toast.error(
-            synced.bannedUntil
-              ? `This account is banned until ${new Date(synced.bannedUntil).toLocaleString()}`
-              : "This account has been permanently banned.",
-          );
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: window.location.origin,
+          },
+        });
+
+        if (error) {
+          toast.error(formatSupabaseError(error));
           return false;
         }
 
-        applyAuthUser(synced);
-        toast.success("Signed in with Google");
+        if (data?.url) {
+          window.location.href = data.url;
+        }
+
+        toast.info("Redirecting to Google sign-in...");
         return true;
       } catch (error) {
-        const message = formatFirebaseError(error);
-        if (message === "Popup closed before completing sign in") {
-          toast.info(message);
-        } else {
-          toast.error(message);
-        }
+        toast.error(formatSupabaseError(error));
         return false;
       }
     },
-    [applyAuthUser, ensureAuthUser],
+    [],
   );
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!firebaseUser) {
-        setCurrentAuthId(null);
-        setSession({ mode: "guest" });
-        return;
-      }
-
-      if (!firebaseUser.emailVerified) {
-        toast.info("Please verify your email before signing in.");
-        await signOut(auth);
-        return;
-      }
-
-      const provider = mapFirebaseProvider(firebaseUser);
-      const synced = ensureAuthUser(firebaseUser, provider);
-      if (!synced) {
-        await signOut(auth);
-        return;
-      }
-
-      if (synced.status === "banned") {
-        await signOut(auth);
-        toast.error(
-          synced.bannedUntil
-            ? `This account is banned until ${new Date(synced.bannedUntil).toLocaleString()}`
-            : "This account has been permanently banned.",
-        );
-        return;
-      }
-
-      applyAuthUser(synced);
-    });
-
-    return () => unsubscribe();
-  }, [applyAuthUser, ensureAuthUser]);
 
   const changePassword = useCallback<AuthContextValue["changePassword"]>(
     async (currentPassword, newPassword) => {
@@ -535,11 +544,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      if (!auth.currentUser || !auth.currentUser.email) {
-        toast.error("No authenticated session");
-        return false;
-      }
-
       const trimmed = newPassword.trim();
       if (trimmed.length < 8) {
         toast.error("Password must be at least 8 characters");
@@ -547,16 +551,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
-        await reauthenticateWithCredential(auth.currentUser, credential);
-        await updatePassword(auth.currentUser, trimmed);
-        setUsers((prev) =>
-          prev.map((user) => (user.id === authUser.id ? { ...user, password: undefined } : user)),
-        );
+        const { error: reauthError } = await supabase.auth.signInWithPassword({
+          email: authUser.email,
+          password: currentPassword,
+        });
+
+        if (reauthError) {
+          toast.error("Current password is incorrect");
+          return false;
+        }
+
+        const { error } = await supabase.auth.updateUser({ password: trimmed });
+        if (error) {
+          toast.error(formatSupabaseError(error));
+          return false;
+        }
+
         toast.success("Password updated");
         return true;
       } catch (error) {
-        toast.error(formatFirebaseError(error));
+        toast.error(formatSupabaseError(error));
         return false;
       }
     },
@@ -597,6 +611,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return prev;
         });
       }
+
+      void (async () => {
+        const { error } = await supabase.from("users").delete().in("id", removedAuthIds);
+        if (error) {
+          console.error("Failed to delete Supabase profiles", error);
+        }
+      })();
     },
     [currentAuthId],
   );
@@ -648,7 +669,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const continueAsGuest = useCallback(async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
     } catch {
       // ignore
     }
@@ -663,7 +684,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
     } catch {
       // ignore
     }

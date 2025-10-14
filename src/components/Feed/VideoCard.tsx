@@ -95,7 +95,7 @@ export function VideoCard({
 
   const alreadyFollowing = creator.id === authUser?.creatorId || isFollowing(creator.id);
 
-  const handleFollow = () => {
+  const handleFollow = async () => {
     if (!authUser) {
       toast.info("Sign in to follow creators");
       return;
@@ -105,7 +105,7 @@ export function VideoCard({
       return;
     }
 
-    toggleFollow(creator.id);
+    await toggleFollow(creator.id);
     toast.success(`You're now following ${creator.name}`);
   };
 
@@ -147,17 +147,22 @@ export function VideoCard({
             )}
           </button>
           <span className="font-semibold text-lg">{username}</span>
-          <Button
-            size="sm"
-            className={cn(
-              "border-0 h-8",
-              alreadyFollowing ? "bg-muted text-muted-foreground" : "gradient-primary text-white"
-            )}
-            onClick={handleFollow}
-            disabled={alreadyFollowing}
-          >
-            {alreadyFollowing ? "Following" : "Follow"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              className={cn(
+                "border-0 h-8",
+                alreadyFollowing ? "bg-muted text-muted-foreground" : "gradient-primary text-white"
+              )}
+              onClick={handleFollow}
+              disabled={alreadyFollowing}
+            >
+              {alreadyFollowing ? "Following" : "Follow"}
+            </Button>
+            <Button size="sm" variant="outline" className="h-8" onClick={onProfileClick}>
+              View profile
+            </Button>
+          </div>
         </div>
 
         <p className="mb-3 max-w-[75%] text-sm leading-relaxed line-clamp-3 md:max-w-[60%]">{description}</p>

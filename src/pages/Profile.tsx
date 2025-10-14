@@ -113,7 +113,7 @@ export default function Profile() {
       navigate("/login");
       return;
     }
-    toggleFollow(profileUser.id);
+    void toggleFollow(profileUser.id);
   };
 
   const handleAdminDeleteAccount = () => {
@@ -595,7 +595,7 @@ function EditProfileDialog({ open, onOpenChange, profile }: EditProfileDialogPro
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-3 md:col-span-2">
               <label className="text-sm font-medium" htmlFor="avatar">
                 Profile Image URL
               </label>
@@ -605,6 +605,43 @@ function EditProfileDialog({ open, onOpenChange, profile }: EditProfileDialogPro
                 onChange={(event) => setAvatar(event.target.value)}
                 placeholder="https://..."
               />
+              <div className="flex flex-wrap items-center gap-3">
+                <Input
+                  id="avatar-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      return;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast.error("Choose an image smaller than 5MB");
+                      event.target.value = "";
+                      return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      if (typeof reader.result === "string") {
+                        setAvatar(reader.result);
+                      } else {
+                        toast.error("Unable to read image file");
+                      }
+                      event.target.value = "";
+                    };
+                    reader.onerror = () => {
+                      toast.error("Failed to load image");
+                      event.target.value = "";
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <label htmlFor="avatar-upload" className="text-xs text-muted-foreground">
+                  Upload a JPG/PNG (max 5MB) or paste a URL above.
+                </label>
+              </div>
               <div className="flex items-center gap-3 pt-2">
                 <div className="h-16 w-16 overflow-hidden rounded-xl border border-border/60">
                   <img
