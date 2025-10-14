@@ -42,6 +42,20 @@ interface RegisterWithEmailPayload {
   password: string;
 }
 
+const areAuthUsersEqual = (left: AuthUser, right: AuthUser) =>
+  left.id === right.id &&
+  left.email === right.email &&
+  left.provider === right.provider &&
+  left.creatorId === right.creatorId &&
+  left.password === right.password &&
+  left.status === right.status &&
+  left.banReason === right.banReason &&
+  left.bannedUntil === right.bannedUntil &&
+  left.banIssuedAt === right.banIssuedAt &&
+  left.displayName === right.displayName &&
+  left.photoURL === right.photoURL &&
+  left.emailVerified === right.emailVerified;
+
 type SessionState = { mode: "auth"; authId: string } | { mode: "guest" } | null;
 type SessionMode = "auth" | "guest" | "none";
 
@@ -305,18 +319,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const normalized = normalizeAuthUser(base);
 
+      let nextUser: AuthUser | null = normalized;
       setUsers((prev) => {
         const idx = prev.findIndex((user) => user.id === normalized.id);
         if (idx === -1) {
           const filtered = prev.filter((user) => user.email !== normalized.email);
+          if (filtered.length === prev.length) {
+            return [...prev, normalized];
+          }
           return [...filtered, normalized];
         }
+
+        const current = prev[idx];
+        if (areAuthUsersEqual(current, normalized)) {
+          nextUser = current;
+          return prev;
+        }
+
         const clone = [...prev];
-        clone[idx] = { ...clone[idx], ...normalized };
+        clone[idx] = { ...current, ...normalized };
         return clone;
       });
 
-      return normalized;
+      return nextUser;
     },
     [creators, normalizeAuthUser, registerCreator, users],
   );
@@ -327,6 +352,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
         const provider = mapFirebaseProvider(credential.user);
+        await credential.user.reload();
+        if (!credential.user.emailVerified) {
+          try {
+            await sendEmailVerification(credential.user);
+            toast.info(`Verify your email. A verification link was sent to ${credential.user.email ?? normalizedEmail}.`);
+          } catch (verificationError) {
+            toast.error(formatFirebaseError(verificationError));
+          }
+          await signOut(auth);
+          return false;
+        }
         const synced = ensureAuthUser(credential.user, provider);
         if (!synced) {
           await signOut(auth);
@@ -370,13 +406,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-        if (name.trim()) {
-          await updateProfile(credential.user, { displayName: name.trim() });
+        const trimmedName = name.trim();
+        if (trimmedName) {
+          await updateProfile(credential.user, { displayName: trimmedName });
         }
         await sendEmailVerification(credential.user);
 
         const synced = ensureAuthUser(credential.user, "email", {
-          name: name.trim() || "New Creator",
+          name: trimmedName || "New Creator",
           username: trimmedUsername,
         });
 
@@ -385,7 +422,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return false;
         }
 
-        applyAuthUser(synced);
+        try {
+          await signOut(auth);
+        } catch {
+          // ignore
+        }
+
+        setCurrentAuthId(null);
+        setSession({ mode: "guest" });
+        const fallbackId = creators[0]?.id;
+        if (fallbackId) {
+          setCurrentUserId(fallbackId);
+        }
+
         toast.success("Account created");
         toast.info("Verification email sent! Check your inbox.");
         return true;
@@ -394,7 +443,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [applyAuthUser, creators, ensureAuthUser],
+    [creators, ensureAuthUser, setCurrentAuthId, setCurrentUserId, setSession],
   );
 
   const loginWithProvider = useCallback<AuthContextValue["loginWithProvider"]>(
@@ -442,6 +491,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!firebaseUser) {
         setCurrentAuthId(null);
         setSession({ mode: "guest" });
+        return;
+      }
+
+      if (!firebaseUser.emailVerified) {
+        toast.info("Please verify your email before signing in.");
+        await signOut(auth);
         return;
       }
 

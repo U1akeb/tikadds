@@ -16,6 +16,7 @@ const Register = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProviderLoading, setIsProviderLoading] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null);
 
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -28,7 +29,14 @@ const Register = () => {
     const success = await registerWithEmail({ name, username, email, password });
     setIsSubmitting(false);
     if (success) {
-      navigate("/profile");
+      const normalized = email.trim().toLowerCase();
+      setVerificationNotice(
+        `A verification link has been sent to ${normalized}. Click the link in your inbox to activate your account.`,
+      );
+      setName("");
+      setUsername("");
+      setPassword("");
+      setConfirmPassword("");
     }
   };
 
@@ -60,6 +68,7 @@ const Register = () => {
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="Taylor Swift"
+                  disabled={Boolean(verificationNotice)}
                 />
               </div>
               <div className="space-y-2">
@@ -72,6 +81,7 @@ const Register = () => {
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="taylor"
                   required
+                  disabled={Boolean(verificationNotice)}
                 />
               </div>
             </div>
@@ -87,6 +97,7 @@ const Register = () => {
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="you@example.com"
                 required
+                disabled={Boolean(verificationNotice)}
               />
             </div>
 
@@ -101,6 +112,7 @@ const Register = () => {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
+                  disabled={Boolean(verificationNotice)}
                 />
               </div>
               <div className="space-y-2">
@@ -113,16 +125,43 @@ const Register = () => {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   required
+                  disabled={Boolean(verificationNotice)}
                 />
               </div>
             </div>
 
-            <Button type="submit" className="w-full gradient-primary text-white" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              className="w-full gradient-primary text-white"
+              disabled={isSubmitting || Boolean(verificationNotice)}
+            >
               {isSubmitting ? "Creating account..." : "Create account"}
             </Button>
             <p className="text-xs text-muted-foreground">
               We’ll send you a verification email right after sign up.
             </p>
+            {verificationNotice && (
+              <div className="rounded-md border border-primary/40 bg-primary/5 p-4 text-sm">
+                <p className="font-medium text-primary">{verificationNotice}</p>
+                <p className="mt-2 text-muted-foreground">
+                  After verifying, return to the login page and sign in with your email and password.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <Button variant="outline" onClick={() => navigate("/login")}>Go to login</Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setVerificationNotice(null);
+                      setEmail("");
+                      setName("");
+                      setUsername("");
+                    }}
+                  >
+                    Create another account
+                  </Button>
+                </div>
+              </div>
+            )}
           </form>
 
           <div className="space-y-3">
