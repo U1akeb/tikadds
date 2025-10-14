@@ -111,7 +111,7 @@ export default function CreateJob() {
     return (
       <div className="flex min-h-screen bg-background">
         <Sidebar />
-        <main className="flex-1 pt-20 md:pt-0 md:pl-28">
+        <main className="flex-1 pt-20 md:pt-0 md:pl-[clamp(12rem,12.5vw,16rem)]">
           <div className="mx-auto max-w-xl px-4 py-16">
             <Card className="border-border/60 text-center">
               <CardHeader>
@@ -133,7 +133,7 @@ export default function CreateJob() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 pt-20 md:pt-0 md:pl-28">
+      <main className="flex-1 pt-20 md:pt-0 md:pl-[clamp(12rem,12.5vw,16rem)]">
         <div className="mx-auto w-full max-w-4xl px-4 py-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold md:text-4xl">Create a Job Request</h1>

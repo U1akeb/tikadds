@@ -3,6 +3,8 @@ import { VideoCard } from "./VideoCard";
 import { Comments } from "../Comments/Comments";
 import { CreatorProfileModal } from "./CreatorProfileModal";
 import { useUser } from "@/context/UserContext";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 interface VideoItem {
   id: string;
@@ -60,6 +62,8 @@ export function Feed() {
   const [selectedCreator, setSelectedCreator] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isLoadingMoreRef = useRef(false);
+  const isMobile = useIsMobile();
+  const commentsOpen = selectedVideo !== null;
 
   const creatorLookup = useMemo(() => {
     return creators.reduce<Record<string, typeof creators[number]>>((acc, creator) => {
@@ -106,35 +110,44 @@ export function Feed() {
     setSelectedCreator(creatorId);
   };
 
+  const toggleComments = (videoId: string) => {
+    setSelectedVideo((current) => (current === videoId ? null : videoId));
+  };
+
   const activeCreator = selectedCreator ? creatorLookup[selectedCreator] ?? null : null;
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="h-[calc(100vh-5rem)] md:h-screen overflow-y-scroll snap-y snap-mandatory scrollbar-hide"
-      >
-        {videos.map((video) => {
-          const creator = creatorLookup[video.creatorId];
-          if (!creator) return null;
+      <div className="flex h-[calc(100vh-5rem)] flex-col transition-smooth md:h-screen md:flex-row md:gap-6">
+        <div
+          ref={containerRef}
+          className={cn(
+            "flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide transition-smooth min-h-0",
+            commentsOpen && !isMobile ? "md:pr-0" : "",
+          )}
+        >
+          {videos.map((video) => {
+            const creator = creatorLookup[video.creatorId];
+            if (!creator) return null;
 
-          return (
-            <VideoCard
-              key={video.id}
-              {...video}
-              creator={creator}
-              onCommentClick={() => setSelectedVideo(video.id)}
-              onProfileClick={() => handleProfileOpen(video.creatorId)}
-            />
-          );
-        })}
+            return (
+              <VideoCard
+                key={video.id}
+                {...video}
+                creator={creator}
+                onCommentClick={toggleComments}
+                onProfileClick={() => handleProfileOpen(video.creatorId)}
+              />
+            );
+          })}
+        </div>
+
+        <Comments
+          isOpen={commentsOpen}
+          onClose={() => setSelectedVideo(null)}
+          videoId={selectedVideo || ""}
+        />
       </div>
-
-      <Comments
-        isOpen={selectedVideo !== null}
-        onClose={() => setSelectedVideo(null)}
-        videoId={selectedVideo || ""}
-      />
 
       <CreatorProfileModal
         creator={activeCreator}

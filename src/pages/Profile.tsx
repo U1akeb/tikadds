@@ -33,7 +33,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+const BASE_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "creator", label: "Creator" },
   { value: "advertiser", label: "Advertiser" },
 ];
@@ -66,13 +66,20 @@ export default function Profile() {
     getFollowersCount,
     getFollowingCount,
   } = useUser();
-  const { authUser } = useAuth();
+  const { authUser, isAdmin, sessionMode } = useAuth();
   const { jobs } = useJobs();
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   const profileUser = viewUsername ? findCreatorByUsername(viewUsername) ?? currentUser : currentUser;
   const isOwnProfile = profileUser.id === currentUser.id;
+
+  useEffect(() => {
+    if (sessionMode === "guest" && !viewUsername) {
+      toast.info("Sign in to access your profile");
+      navigate("/login");
+    }
+  }, [sessionMode, viewUsername, navigate]);
 
   const requesterJobs = useMemo(
     () => jobs.filter((job) => job.requesterId === profileUser.id),
@@ -92,6 +99,12 @@ export default function Profile() {
   const followersCount = getFollowersCount(profileUser.id);
   const followingCount = getFollowingCount(profileUser.id);
   const alreadyFollowing = !isOwnProfile && isFollowing(profileUser.id);
+  const roleOptions = useMemo(() => {
+    if (isAdmin) {
+      return [...BASE_ROLE_OPTIONS, { value: "admin", label: "Admin" }];
+    }
+    return BASE_ROLE_OPTIONS;
+  }, [isAdmin]);
 
   const handleFollowToggle = () => {
     if (!authUser) {
@@ -107,7 +120,7 @@ export default function Profile() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 pt-20 md:pt-0 md:pl-28">
+      <main className="flex-1 pt-20 md:pt-0 md:pl-[clamp(12rem,12.5vw,16rem)]">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
           <Card className="border-border/60">
             <CardContent className="flex flex-col gap-6 py-6 md:flex-row md:gap-10">
@@ -140,7 +153,7 @@ export default function Profile() {
                         <SelectValue placeholder="Role" />
                       </SelectTrigger>
                       <SelectContent>
-                        {ROLE_OPTIONS.map((option) => (
+                        {roleOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -353,7 +366,7 @@ function StatsGrid({
     },
   ];
 
-  if (role === "creator") {
+  if (role === "creator" || role === "admin") {
     entries.push(
       {
         label: "Earnings",

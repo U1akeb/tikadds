@@ -13,7 +13,7 @@ interface VideoCardProps {
   likes: number;
   comments: number;
   shares: number;
-  onCommentClick: () => void;
+  onCommentClick: (videoId: string) => void;
   onProfileClick: () => void;
   creator: CreatorProfile;
 }
@@ -173,7 +173,7 @@ export function VideoCard({
         </button>
 
         <button
-          onClick={onCommentClick}
+          onClick={() => onCommentClick(id)}
           className="flex flex-col items-center gap-1 transition-smooth"
           type="button"
           aria-label="Open comments"

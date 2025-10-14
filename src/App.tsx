@@ -14,6 +14,7 @@ import { JobProvider } from "./context/JobContext";
 import { AuthProvider } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import { SessionGate } from "@/components/auth/SessionGate";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <SessionGate />
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/upload" element={<Upload />} />

@@ -45,7 +45,7 @@ export default function Upload() {
     return (
       <div className="flex min-h-screen bg-background">
         <Sidebar />
-        <main className="flex-1 pt-20 md:pt-0 md:pl-28">
+        <main className="flex-1 pt-20 md:pt-0 md:pl-[clamp(12rem,12.5vw,16rem)]">
           <div className="mx-auto max-w-xl px-4 py-16">
             <Card className="border-border/60 text-center">
               <CardHeader>
@@ -67,7 +67,7 @@ export default function Upload() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <div className="flex-1 pt-20 md:pt-0 md:pl-28">
+      <div className="flex-1 pt-20 md:pt-0 md:pl-[clamp(12rem,12.5vw,16rem)]">
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8 animate-fade-in-up">
           <h1 className="text-4xl font-bold mb-2 bg-gradient-primary bg-clip-text text-transparent">

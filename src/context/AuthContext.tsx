@@ -1,6 +1,7 @@
-import { ReactNode, createContext, useCallback, useContext, useMemo, useState } from "react";
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useUser } from "./UserContext";
+import { isAdminEmail } from "@/lib/auth";
 
 type AuthProviderType = "email" | "google" | "facebook";
 
@@ -19,13 +20,22 @@ interface RegisterWithEmailPayload {
   password: string;
 }
 
+type SessionState = { mode: "auth"; authId: string } | { mode: "guest" } | null;
+type SessionMode = "auth" | "guest" | "none";
+
 interface AuthContextValue {
   authUser: AuthUser | null;
+  sessionMode: SessionMode;
+  isAdmin: boolean;
   loginWithEmail: (email: string, password: string) => boolean;
   registerWithEmail: (payload: RegisterWithEmailPayload) => boolean;
   loginWithProvider: (provider: Exclude<AuthProviderType, "email">) => boolean;
+  continueAsGuest: () => void;
   logout: () => void;
 }
+
+const USERS_STORAGE_KEY = "adspark-auth-users";
+const SESSION_STORAGE_KEY = "adspark-auth-session";
 
 const authSeed: AuthUser[] = [
   {
@@ -49,13 +59,88 @@ const createId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
+const readStoredUsers = (): AuthUser[] | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(USERS_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed as AuthUser[];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const readStoredSession = (): SessionState => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (parsed?.mode === "auth" && typeof parsed.authId === "string") {
+      return { mode: "auth", authId: parsed.authId };
+    }
+    if (parsed?.mode === "guest") {
+      return { mode: "guest" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { registerCreator, setCurrentUserId, creators } = useUser();
 
-  const [users, setUsers] = useState<AuthUser[]>(authSeed);
-  const [currentAuthId, setCurrentAuthId] = useState<string | null>(authSeed[0].id);
+  const [users, setUsers] = useState<AuthUser[]>(() => {
+    const stored = readStoredUsers();
+    const byId = new Map<string, AuthUser>();
+    authSeed.forEach((user) => byId.set(user.id, user));
+    stored?.forEach((user) => {
+      if (user?.id && user.email) {
+        byId.set(user.id, user);
+      }
+    });
+    return Array.from(byId.values());
+  });
+
+  const initialSession = useMemo<SessionState>(() => readStoredSession(), []);
+
+  const [session, setSession] = useState<SessionState>(initialSession);
+  const [currentAuthId, setCurrentAuthId] = useState<string | null>(
+    initialSession?.mode === "auth" ? initialSession.authId : null,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+  }, [users]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (session) {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    } else {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  }, [session]);
 
   const authUser = useMemo<AuthUser | null>(() => {
     if (!currentAuthId) return null;
@@ -66,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (user: AuthUser) => {
       setCurrentAuthId(user.id);
       setCurrentUserId(user.creatorId);
+      setSession({ mode: "auth", authId: user.id });
     },
     [setCurrentUserId],
   );
@@ -100,11 +186,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
+      const isAdminAccount = isAdminEmail(normalizedEmail);
+
       const profile = registerCreator({
         name: name.trim() || "New Creator",
         username: username.trim(),
         email: normalizedEmail,
-        role: "creator",
+        role: isAdminAccount ? "admin" : "creator",
       });
 
       const newAuthUser: AuthUser = {
@@ -156,8 +244,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applyAuthUser, registerCreator, users],
   );
 
+  const continueAsGuest = useCallback(() => {
+    setCurrentAuthId(null);
+    setSession({ mode: "guest" });
+    const fallbackId = creators[0]?.id;
+    if (fallbackId) {
+      setCurrentUserId(fallbackId);
+    }
+    toast.info("Browsing as a guest. Sign up to unlock all features.");
+  }, [creators, setCurrentUserId]);
+
   const logout = useCallback(() => {
     setCurrentAuthId(null);
+    setSession({ mode: "guest" });
     const fallbackId = creators[0]?.id;
     if (fallbackId) {
       setCurrentUserId(fallbackId);
@@ -165,9 +264,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     toast.success("Logged out");
   }, [creators, setCurrentUserId]);
 
+  useEffect(() => {
+    if (session?.mode === "auth") {
+      const existing = users.find((user) => user.id === session.authId);
+      if (existing) {
+        setCurrentAuthId(existing.id);
+        setCurrentUserId(existing.creatorId);
+        return;
+      }
+      setSession(null);
+      setCurrentAuthId(null);
+    } else if (session?.mode === "guest") {
+      setCurrentAuthId(null);
+      const fallbackId = creators[0]?.id;
+      if (fallbackId) {
+        setCurrentUserId(fallbackId);
+      }
+    }
+  }, [session, users, creators, setCurrentUserId]);
+
+  useEffect(() => {
+    if (authUser) {
+      setCurrentUserId(authUser.creatorId);
+    }
+  }, [authUser, setCurrentUserId]);
+
+  const sessionMode: SessionMode = authUser ? "auth" : session?.mode ?? "none";
+  const isAdmin = authUser ? isAdminEmail(authUser.email) : false;
+
   const value = useMemo<AuthContextValue>(
-    () => ({ authUser, loginWithEmail, registerWithEmail, loginWithProvider, logout }),
-    [authUser, loginWithEmail, registerWithEmail, loginWithProvider, logout],
+    () => ({ authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, logout }),
+    [authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,6 +1,7 @@
-import { createContext, useContext, useMemo, useState, ReactNode, useCallback } from "react";
+import { createContext, useContext, useMemo, useState, ReactNode, useCallback, useEffect } from "react";
+import { isAdminEmail } from "@/lib/auth";
 
-export type UserRole = "creator" | "advertiser";
+export type UserRole = "creator" | "advertiser" | "admin";
 
 export interface CreatorStats {
   videos: number;
@@ -61,6 +62,10 @@ interface UserContextValue {
   findCreatorByUsername: (username: string) => CreatorProfile | undefined;
   findCreatorById: (id: string) => CreatorProfile | undefined;
 }
+
+const CREATORS_STORAGE_KEY = "adspark-creators";
+const FOLLOW_STORAGE_KEY = "adspark-follow-map";
+const CURRENT_USER_STORAGE_KEY = "adspark-current-user";
 
 const creatorsSeed: CreatorProfile[] = [
   {
@@ -215,15 +220,148 @@ const createId = () =>
 const UserContext = createContext<UserContextValue | null>(null);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [creators, setCreators] = useState<CreatorProfile[]>(creatorsSeed);
-  const [currentUserId, setCurrentUserId] = useState<string>(creatorsSeed[0].id);
-  const [followMap, setFollowMap] = useState<FollowMap>(() => {
+  const buildFollowSeed = () => {
     const map: FollowMap = {};
     creatorsSeed.forEach((creator) => {
       map[creator.id] = new Set(followSeed[creator.id] ?? []);
     });
     return map;
+  };
+
+  const sanitizeCreator = (creator: CreatorProfile): CreatorProfile => {
+    const admin = isAdminEmail(creator.email);
+    const safeRole: UserRole = admin ? "admin" : creator.role === "admin" ? "creator" : creator.role;
+    return {
+      ...creator,
+      role: safeRole,
+      stats: {
+        videos: creator.stats.videos,
+        likes: creator.stats.likes,
+        shares: creator.stats.shares,
+        comments: creator.stats.comments,
+        earnings: safeRole === "creator" || safeRole === "admin" ? creator.stats.earnings ?? 0 : creator.stats.earnings,
+        jobsPosted: safeRole === "advertiser" ? creator.stats.jobsPosted ?? 0 : creator.stats.jobsPosted,
+        pendingEarnings:
+          safeRole === "creator" || safeRole === "admin"
+            ? creator.stats.pendingEarnings ?? 0
+            : creator.stats.pendingEarnings,
+        submittedJobs:
+          safeRole === "creator" || safeRole === "admin"
+            ? creator.stats.submittedJobs ?? 0
+            : creator.stats.submittedJobs,
+      },
+    };
+  };
+
+  const [creators, setCreators] = useState<CreatorProfile[]>(() => {
+    if (typeof window === "undefined") {
+      return creatorsSeed.map(sanitizeCreator);
+    }
+    try {
+      const raw = window.localStorage.getItem(CREATORS_STORAGE_KEY);
+      if (!raw) {
+        return creatorsSeed.map(sanitizeCreator);
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const byId = new Map<string, CreatorProfile>();
+        creatorsSeed.forEach((creator) => byId.set(creator.id, sanitizeCreator(creator)));
+        (parsed as CreatorProfile[]).forEach((creator) => {
+          if (creator?.id) {
+            byId.set(creator.id, sanitizeCreator(creator));
+          }
+        });
+        return Array.from(byId.values());
+      }
+    } catch {
+      /* noop */
+    }
+    return creatorsSeed.map(sanitizeCreator);
   });
+
+  const [currentUserId, setCurrentUserId] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return creatorsSeed[0].id;
+    }
+    try {
+      const stored = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+      if (stored) {
+        return stored;
+      }
+    } catch {
+      /* noop */
+    }
+    return creatorsSeed[0].id;
+  });
+
+  const [followMap, setFollowMap] = useState<FollowMap>(() => {
+    if (typeof window === "undefined") {
+      return buildFollowSeed();
+    }
+    try {
+      const raw = window.localStorage.getItem(FOLLOW_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, string[]>;
+        if (parsed && typeof parsed === "object") {
+          const map: FollowMap = {};
+          Object.entries(parsed).forEach(([key, value]) => {
+            map[key] = new Set(Array.isArray(value) ? value : []);
+          });
+          return map;
+        }
+      }
+    } catch {
+      /* noop */
+    }
+    return buildFollowSeed();
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(CREATORS_STORAGE_KEY, JSON.stringify(creators));
+  }, [creators]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const serialized = Object.fromEntries(
+      Object.entries(followMap).map(([key, value]) => [key, Array.from(value)]),
+    );
+    window.localStorage.setItem(FOLLOW_STORAGE_KEY, JSON.stringify(serialized));
+  }, [followMap]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, currentUserId);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    setFollowMap((prev) => {
+      let changed = false;
+      const next: FollowMap = { ...prev };
+      creators.forEach(({ id }) => {
+        if (!next[id]) {
+          next[id] = new Set();
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [creators]);
+
+  useEffect(() => {
+    if (!creators.some((creator) => creator.id === currentUserId)) {
+      const fallback = creators[0]?.id;
+      if (fallback) {
+        setCurrentUserId(fallback);
+      }
+    }
+  }, [creators, currentUserId]);
 
   const currentUser = useMemo<CurrentUser>(() => {
     const base = creators.find((creator) => creator.id === currentUserId);
@@ -235,22 +373,26 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const setUserRole = useCallback((role: UserRole) => {
     setCreators((prev) =>
-      prev.map((creator) =>
-        creator.id === currentUserId
-          ? {
-              ...creator,
-              role,
-              stats:
-                role === "creator"
-                  ? { ...creator.stats, jobsPosted: creator.stats.jobsPosted ?? 0 }
-                  : {
-                      ...creator.stats,
-                      earnings: creator.stats.earnings,
-                      pendingEarnings: creator.stats.pendingEarnings,
-                    },
-            }
-          : creator,
-      ),
+      prev.map((creator) => {
+        if (creator.id !== currentUserId) {
+          return creator;
+        }
+
+        const enforcedRole: UserRole = isAdminEmail(creator.email) ? "admin" : role === "admin" ? creator.role : role;
+
+        return {
+          ...creator,
+          role: enforcedRole,
+          stats:
+            enforcedRole === "creator"
+              ? { ...creator.stats, jobsPosted: creator.stats.jobsPosted ?? 0 }
+              : {
+                  ...creator.stats,
+                  earnings: creator.stats.earnings,
+                  pendingEarnings: creator.stats.pendingEarnings,
+                },
+        };
+      }),
     );
   }, [currentUserId]);
 
@@ -282,13 +424,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const registerCreator = useCallback<UserContextValue["registerCreator"]>((payload) => {
     const id = createId();
-    const role = payload.role ?? "creator";
+    const requestedRole = payload.role ?? "creator";
+    const enforcedRole: UserRole = isAdminEmail(payload.email) ? "admin" : requestedRole === "admin" ? "creator" : requestedRole;
     const newCreator: CreatorProfile = {
       id,
       name: payload.name,
       username: payload.username,
       email: payload.email,
-      role,
+      role: enforcedRole,
       avatar:
         payload.avatar ??
         `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payload.name)}&backgroundColor=B8DBD9`,
@@ -298,10 +441,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
         likes: 0,
         shares: 0,
         comments: 0,
-        earnings: role === "creator" ? 0 : undefined,
-        jobsPosted: role === "advertiser" ? 0 : undefined,
-        pendingEarnings: role === "creator" ? 0 : undefined,
-        submittedJobs: role === "creator" ? 0 : undefined,
+        earnings: enforcedRole === "creator" || enforcedRole === "admin" ? 0 : undefined,
+        jobsPosted: enforcedRole === "advertiser" ? 0 : undefined,
+        pendingEarnings: enforcedRole === "creator" || enforcedRole === "admin" ? 0 : undefined,
+        submittedJobs: enforcedRole === "creator" || enforcedRole === "admin" ? 0 : undefined,
       },
       videos: [],
       pinnedVideoIds: [],
@@ -350,7 +493,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     () => ({
       currentUser,
       creators,
-      isContentRequester: currentUser.role !== "creator",
+      isContentRequester: currentUser.role === "advertiser",
       setUserRole,
       updateProfile,
       updatePinnedVideos,

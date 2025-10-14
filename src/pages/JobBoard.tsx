@@ -87,7 +87,7 @@ export default function JobBoard() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 pt-20 md:pt-0 md:pl-28">
+      <main className="flex-1 pt-20 md:pt-0 md:pl-[clamp(12rem,12.5vw,16rem)]">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
           <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>

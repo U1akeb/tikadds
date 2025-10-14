@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CreatorProfile } from "@/context/UserContext";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 interface CreatorProfileModalProps {
   creator: CreatorProfile | null;
@@ -13,6 +15,7 @@ interface CreatorProfileModalProps {
 
 export function CreatorProfileModal({ creator, open, onOpenChange }: CreatorProfileModalProps) {
   const navigate = useNavigate();
+  const { sessionMode } = useAuth();
 
   if (!creator) {
     return null;
@@ -23,6 +26,12 @@ export function CreatorProfileModal({ creator, open, onOpenChange }: CreatorProf
     .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
   const handleViewProfile = () => {
+    if (sessionMode === "guest") {
+      toast.info("Sign in to view full profiles");
+      navigate("/login");
+      onOpenChange(false);
+      return;
+    }
     navigate(`/profile?view=${creator.username}`);
     onOpenChange(false);
   };
