@@ -109,7 +109,7 @@ export default function Settings() {
     setPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handlePasswordChange = (event: React.FormEvent<HTMLFormElement>) => {
+  const handlePasswordChange = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!authUser) {
       toast.error("Sign in to change your password");
@@ -127,7 +127,7 @@ export default function Settings() {
     }
 
     setIsSubmitting(true);
-    const updated = changePassword(currentPassword, newPassword);
+    const updated = await changePassword(currentPassword, newPassword);
     setIsSubmitting(false);
 
     if (updated) {

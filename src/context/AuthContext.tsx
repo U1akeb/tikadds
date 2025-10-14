@@ -2,6 +2,21 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { toast } from "sonner";
 import { useUser } from "./UserContext";
 import { isAdminEmail } from "@/lib/auth";
+import { auth, googleProvider } from "@/firebaseConfig";
+import {
+  EmailAuthProvider,
+  User as FirebaseUser,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  reauthenticateWithCredential,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  updatePassword,
+  updateProfile,
+} from "firebase/auth";
+import { FirebaseError } from "firebase/app";
 
 type AuthProviderType = "email" | "google" | "facebook";
 
@@ -9,12 +24,15 @@ interface AuthUser {
   id: string;
   email: string;
   provider: AuthProviderType;
-  password?: string;
   creatorId: string;
+  password?: string;
   status?: "active" | "banned";
   banReason?: string;
   bannedUntil?: string | null;
   banIssuedAt?: string;
+  displayName?: string | null;
+  photoURL?: string | null;
+  emailVerified?: boolean;
 }
 
 interface RegisterWithEmailPayload {
@@ -31,15 +49,15 @@ interface AuthContextValue {
   authUser: AuthUser | null;
   sessionMode: SessionMode;
   isAdmin: boolean;
-  loginWithEmail: (email: string, password: string) => boolean;
-  registerWithEmail: (payload: RegisterWithEmailPayload) => boolean;
-  loginWithProvider: (provider: Exclude<AuthProviderType, "email">, selectedEmail?: string) => boolean;
-  continueAsGuest: () => void;
-  changePassword: (currentPassword: string, newPassword: string) => boolean;
+  loginWithEmail: (email: string, password: string) => Promise<boolean>;
+  registerWithEmail: (payload: RegisterWithEmailPayload) => Promise<boolean>;
+  loginWithProvider: (provider: Exclude<AuthProviderType, "email">) => Promise<boolean>;
+  continueAsGuest: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   deleteAccountByCreatorId: (creatorId: string) => void;
   banAccountByCreatorId: (creatorId: string, reason: string, bannedUntil?: string | null) => void;
   unbanAccountByCreatorId: (creatorId: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const USERS_STORAGE_KEY = "adspark-auth-users";
@@ -80,11 +98,6 @@ const authSeed: AuthUser[] = [
   },
 ];
 
-const createId = () =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2);
-
 const readStoredUsers = (): AuthUser[] | null => {
   if (typeof window === "undefined") {
     return null;
@@ -124,6 +137,42 @@ const readStoredSession = (): SessionState => {
   } catch {
     return null;
   }
+};
+
+const mapFirebaseProvider = (user: FirebaseUser): AuthProviderType => {
+  const providerId = user.providerData[0]?.providerId;
+  if (providerId === "google.com") {
+    return "google";
+  }
+  return "email";
+};
+
+const usernameFromEmail = (email: string) => email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
+
+const formatFirebaseError = (error: unknown) => {
+  if (error instanceof FirebaseError) {
+    switch (error.code) {
+      case "auth/email-already-in-use":
+        return "An account with this email already exists";
+      case "auth/invalid-email":
+        return "Enter a valid email address";
+      case "auth/invalid-credential":
+      case "auth/wrong-password":
+        return "Invalid email or password";
+      case "auth/user-disabled":
+        return "This account has been disabled";
+      case "auth/user-not-found":
+        return "No account found with these credentials";
+      case "auth/popup-closed-by-user":
+        return "Popup closed before completing sign in";
+      default:
+        return error.message;
+    }
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Something went wrong";
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -203,58 +252,113 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setCurrentUserId],
   );
 
-  const loginWithEmail = useCallback<AuthContextValue["loginWithEmail"]>(
-    (email, password) => {
-      const normalizedEmail = email.trim().toLowerCase();
-      const existing = users.find((user) => user.email === normalizedEmail && user.provider === "email");
-
-      if (!existing || existing.password !== password) {
-        toast.error("Invalid email or password");
-        return false;
+  const ensureAuthUser = useCallback(
+    (
+      firebaseUser: FirebaseUser,
+      provider: AuthProviderType,
+      options?: { name?: string; username?: string },
+    ) => {
+      const rawEmail = firebaseUser.email?.trim();
+      if (!rawEmail) {
+        toast.error("Your account is missing an email address");
+        return null;
       }
 
-      let userToApply = existing;
-      if (existing.status === "banned") {
-        const expires = existing.bannedUntil ? new Date(existing.bannedUntil).getTime() : null;
-        const now = Date.now();
-        const expired = expires !== null && Number.isFinite(expires) && expires < now;
-        if (expired) {
-          userToApply = {
-            ...existing,
-            status: "active",
-            bannedUntil: null,
-            banReason: undefined,
-            banIssuedAt: undefined,
-          };
-          setUsers((prev) => prev.map((user) => (user.id === existing.id ? userToApply : user)));
-        } else {
+      const email = rawEmail.toLowerCase();
+      const uid = firebaseUser.uid;
+
+      const existing =
+        users.find((user) => user.id === uid) ?? users.find((user) => user.email === email) ?? null;
+
+      let creatorId = existing?.creatorId;
+
+      if (!creatorId) {
+        const matchedCreator = creators.find(
+          (creator) => creator.email && creator.email.toLowerCase() === email,
+        );
+        const profile =
+          matchedCreator ??
+          registerCreator({
+            name: options?.name ?? firebaseUser.displayName ?? usernameFromEmail(email),
+            username: options?.username ?? usernameFromEmail(email),
+            email,
+            role: isAdminEmail(email) ? "admin" : "creator",
+            avatar: firebaseUser.photoURL ?? undefined,
+          });
+        creatorId = profile.id;
+      }
+
+      const base: AuthUser = {
+        id: uid,
+        email,
+        provider,
+        creatorId,
+        password: existing?.password,
+        status: existing?.status ?? "active",
+        banReason: existing?.banReason,
+        bannedUntil: existing?.bannedUntil ?? null,
+        banIssuedAt: existing?.banIssuedAt,
+        displayName: firebaseUser.displayName ?? existing?.displayName ?? null,
+        photoURL: firebaseUser.photoURL ?? existing?.photoURL ?? null,
+        emailVerified: firebaseUser.emailVerified,
+      };
+
+      const normalized = normalizeAuthUser(base);
+
+      setUsers((prev) => {
+        const idx = prev.findIndex((user) => user.id === normalized.id);
+        if (idx === -1) {
+          const filtered = prev.filter((user) => user.email !== normalized.email);
+          return [...filtered, normalized];
+        }
+        const clone = [...prev];
+        clone[idx] = { ...clone[idx], ...normalized };
+        return clone;
+      });
+
+      return normalized;
+    },
+    [creators, normalizeAuthUser, registerCreator, users],
+  );
+
+  const loginWithEmail = useCallback<AuthContextValue["loginWithEmail"]>(
+    async (email, password) => {
+      const normalizedEmail = email.trim().toLowerCase();
+      try {
+        const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        const provider = mapFirebaseProvider(credential.user);
+        const synced = ensureAuthUser(credential.user, provider);
+        if (!synced) {
+          await signOut(auth);
+          return false;
+        }
+        if (synced.status === "banned") {
+          await signOut(auth);
           toast.error(
-            existing.bannedUntil
-              ? `This account is banned until ${new Date(existing.bannedUntil).toLocaleString()}`
+            synced.bannedUntil
+              ? `This account is banned until ${new Date(synced.bannedUntil).toLocaleString()}`
               : "This account has been permanently banned.",
           );
           return false;
         }
+        applyAuthUser(synced);
+        toast.success("Logged in successfully");
+        return true;
+      } catch (error) {
+        toast.error(formatFirebaseError(error));
+        return false;
       }
-
-      applyAuthUser(userToApply);
-      toast.success("Logged in successfully");
-      return true;
     },
-    [applyAuthUser, users],
+    [applyAuthUser, ensureAuthUser],
   );
 
   const registerWithEmail = useCallback<AuthContextValue["registerWithEmail"]>(
-    ({ name, username, email, password }) => {
+    async ({ name, username, email, password }) => {
       const normalizedEmail = email.trim().toLowerCase();
       const trimmedUsername = username.trim();
+
       if (!trimmedUsername) {
         toast.error("Username is required");
-        return false;
-      }
-
-      if (users.some((user) => user.email === normalizedEmail)) {
-        toast.error("An account with this email already exists");
         return false;
       }
 
@@ -264,97 +368,108 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      const isAdminAccount = isAdminEmail(normalizedEmail);
+      try {
+        const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+        if (name.trim()) {
+          await updateProfile(credential.user, { displayName: name.trim() });
+        }
+        await sendEmailVerification(credential.user);
 
-      const profile = registerCreator({
-        name: name.trim() || "New Creator",
-        username: trimmedUsername,
-        email: normalizedEmail,
-        role: isAdminAccount ? "admin" : "creator",
-      });
+        const synced = ensureAuthUser(credential.user, "email", {
+          name: name.trim() || "New Creator",
+          username: trimmedUsername,
+        });
 
-      const newAuthUser: AuthUser = {
-        id: createId(),
-        email: normalizedEmail,
-        password,
-        provider: "email",
-        creatorId: profile.id,
-        status: "active",
-      };
+        if (!synced) {
+          await signOut(auth);
+          return false;
+        }
 
-      setUsers((prev) => [...prev, newAuthUser]);
-      applyAuthUser(newAuthUser);
-      toast.success("Account created");
-      return true;
+        applyAuthUser(synced);
+        toast.success("Account created");
+        toast.info("Verification email sent! Check your inbox.");
+        return true;
+      } catch (error) {
+        toast.error(formatFirebaseError(error));
+        return false;
+      }
     },
-    [applyAuthUser, creators, registerCreator, users],
+    [applyAuthUser, creators, ensureAuthUser],
   );
 
   const loginWithProvider = useCallback<AuthContextValue["loginWithProvider"]>(
-    (provider, selectedEmail) => {
-      const providerEmail = (selectedEmail?.trim().toLowerCase() || `${provider}@demo.adspark.dev`).replace(
-        /\s+/g,
-        "",
-      );
-      let existing = users.find((user) => user.email === providerEmail && user.provider === provider);
-
-      if (!existing) {
-        const displayName = selectedEmail ? selectedEmail.split("@")[0] : provider === "google" ? "Google" : "Facebook";
-        const baseUsername = displayName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || provider;
-        const generatedProfile = registerCreator({
-          name: `${displayName} Creator`,
-          username: `${baseUsername}-${Math.random().toString(36).slice(2, 8)}`,
-          email: providerEmail,
-          role: "creator",
-          avatar:
-            provider === "google"
-              ? "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f4f1.svg"
-              : "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f4f7.svg",
-        });
-
-        existing = {
-          id: createId(),
-          email: providerEmail,
-          provider,
-          creatorId: generatedProfile.id,
-          status: "active",
-        };
-        setUsers((prev) => [...prev, existing!]);
+    async (provider) => {
+      if (provider !== "google") {
+        toast.error("Only Google sign-in is supported at the moment");
+        return false;
       }
 
-      let userToApply = existing;
-      if (existing.status === "banned") {
-        const expires = existing.bannedUntil ? new Date(existing.bannedUntil).getTime() : null;
-        const now = Date.now();
-        const expired = expires !== null && Number.isFinite(expires) && expires < now;
-        if (expired) {
-          userToApply = {
-            ...existing,
-            status: "active",
-            bannedUntil: null,
-            banReason: undefined,
-            banIssuedAt: undefined,
-          };
-          setUsers((prev) => prev.map((user) => (user.id === existing!.id ? userToApply : user)));
-        } else {
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        const synced = ensureAuthUser(result.user, "google");
+        if (!synced) {
+          await signOut(auth);
+          return false;
+        }
+        if (synced.status === "banned") {
+          await signOut(auth);
           toast.error(
-            existing.bannedUntil
-              ? `This account is banned until ${new Date(existing.bannedUntil).toLocaleString()}`
+            synced.bannedUntil
+              ? `This account is banned until ${new Date(synced.bannedUntil).toLocaleString()}`
               : "This account has been permanently banned.",
           );
           return false;
         }
-      }
 
-      applyAuthUser(userToApply);
-        toast.success(`Signed in with ${provider === "google" ? "Google" : "Facebook"}`);
-      return true;
+        applyAuthUser(synced);
+        toast.success("Signed in with Google");
+        return true;
+      } catch (error) {
+        const message = formatFirebaseError(error);
+        if (message === "Popup closed before completing sign in") {
+          toast.info(message);
+        } else {
+          toast.error(message);
+        }
+        return false;
+      }
     },
-    [applyAuthUser, registerCreator, users],
+    [applyAuthUser, ensureAuthUser],
   );
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setCurrentAuthId(null);
+        setSession({ mode: "guest" });
+        return;
+      }
+
+      const provider = mapFirebaseProvider(firebaseUser);
+      const synced = ensureAuthUser(firebaseUser, provider);
+      if (!synced) {
+        await signOut(auth);
+        return;
+      }
+
+      if (synced.status === "banned") {
+        await signOut(auth);
+        toast.error(
+          synced.bannedUntil
+            ? `This account is banned until ${new Date(synced.bannedUntil).toLocaleString()}`
+            : "This account has been permanently banned.",
+        );
+        return;
+      }
+
+      applyAuthUser(synced);
+    });
+
+    return () => unsubscribe();
+  }, [applyAuthUser, ensureAuthUser]);
+
   const changePassword = useCallback<AuthContextValue["changePassword"]>(
-    (currentPassword, newPassword) => {
+    async (currentPassword, newPassword) => {
       if (!authUser) {
         toast.error("Sign in to update your password");
         return false;
@@ -365,34 +480,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
+      if (!auth.currentUser || !auth.currentUser.email) {
+        toast.error("No authenticated session");
+        return false;
+      }
+
       const trimmed = newPassword.trim();
       if (trimmed.length < 8) {
         toast.error("Password must be at least 8 characters");
         return false;
       }
 
-      let updatedSuccessfully = false;
-      setUsers((prev) => {
-        const index = prev.findIndex((user) => user.id === authUser.id);
-        if (index === -1) {
-          toast.error("Something went wrong. Try again.");
-          return prev;
-        }
-
-        const target = prev[index];
-        if (target.password !== currentPassword) {
-          toast.error("Current password is incorrect");
-          return prev;
-        }
-
-        const clone = [...prev];
-        clone[index] = { ...target, password: trimmed };
+      try {
+        const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+        await reauthenticateWithCredential(auth.currentUser, credential);
+        await updatePassword(auth.currentUser, trimmed);
+        setUsers((prev) =>
+          prev.map((user) => (user.id === authUser.id ? { ...user, password: undefined } : user)),
+        );
         toast.success("Password updated");
-        updatedSuccessfully = true;
-        return clone;
-      });
-
-      return updatedSuccessfully;
+        return true;
+      } catch (error) {
+        toast.error(formatFirebaseError(error));
+        return false;
+      }
     },
     [authUser],
   );
@@ -480,7 +591,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const continueAsGuest = useCallback(() => {
+  const continueAsGuest = useCallback(async () => {
+    try {
+      await signOut(auth);
+    } catch {
+      // ignore
+    }
     setCurrentAuthId(null);
     setSession({ mode: "guest" });
     const fallbackId = creators[0]?.id;
@@ -490,7 +606,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     toast.info("Browsing as a guest. Sign up to unlock all features.");
   }, [creators, setCurrentUserId]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await signOut(auth);
+    } catch {
+      // ignore
+    }
     setCurrentAuthId(null);
     setSession({ mode: "guest" });
     const fallbackId = creators[0]?.id;

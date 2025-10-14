@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 
 const Login = () => {
@@ -12,39 +11,23 @@ const Login = () => {
   const [email, setEmail] = useState(authUser?.email ?? "");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGooglePickerOpen, setIsGooglePickerOpen] = useState(false);
+  const [isProviderLoading, setIsProviderLoading] = useState(false);
 
-  const googleAccounts = [
-    "creativepro@gmail.com",
-    "brandmaster.agency@gmail.com",
-    "adgenius.creator@gmail.com",
-  ];
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
-    const success = loginWithEmail(email, password);
+    const success = await loginWithEmail(email, password);
     setIsSubmitting(false);
     if (success) {
       navigate("/profile");
     }
   };
 
-  const handleProvider = (provider: "google" | "facebook") => {
-    if (provider === "google") {
-      setIsGooglePickerOpen(true);
-      return;
-    }
-    const success = loginWithProvider(provider);
+  const handleProvider = async (provider: "google" | "facebook") => {
+    setIsProviderLoading(true);
+    const success = await loginWithProvider(provider);
+    setIsProviderLoading(false);
     if (success) {
-      navigate("/profile");
-    }
-  };
-
-  const handleGoogleSelection = (accountEmail: string) => {
-    const success = loginWithProvider("google", accountEmail);
-    if (success) {
-      setIsGooglePickerOpen(false);
       navigate("/profile");
     }
   };
@@ -94,10 +77,10 @@ const Login = () => {
           <div className="space-y-3">
             <p className="text-center text-xs uppercase tracking-wide text-muted-foreground">Or continue with</p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Button variant="outline" onClick={() => handleProvider("google")}>
+              <Button variant="outline" onClick={() => handleProvider("google")} disabled={isProviderLoading}>
                 Google
               </Button>
-              <Button variant="outline" onClick={() => handleProvider("facebook")}>
+              <Button variant="outline" onClick={() => handleProvider("facebook")} disabled={isProviderLoading}>
                 Facebook
               </Button>
             </div>
@@ -111,34 +94,6 @@ const Login = () => {
           </p>
         </CardContent>
       </Card>
-
-      <Dialog open={isGooglePickerOpen} onOpenChange={setIsGooglePickerOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Select a Google account</DialogTitle>
-            <DialogDescription>Choose the Google account to continue with.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            {googleAccounts.map((account) => (
-              <Button
-                key={account}
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => handleGoogleSelection(account)}
-              >
-                {account}
-              </Button>
-            ))}
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => handleGoogleSelection("google@demo.adspark.dev")}
-            >
-              Use a different account
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
