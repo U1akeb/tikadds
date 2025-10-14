@@ -31,6 +31,8 @@ interface AuthContextValue {
   registerWithEmail: (payload: RegisterWithEmailPayload) => boolean;
   loginWithProvider: (provider: Exclude<AuthProviderType, "email">) => boolean;
   continueAsGuest: () => void;
+  changePassword: (currentPassword: string, newPassword: string) => boolean;
+  deleteAccountByCreatorId: (creatorId: string) => void;
   logout: () => void;
 }
 
@@ -190,12 +192,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registerWithEmail = useCallback<AuthContextValue["registerWithEmail"]>(
     ({ name, username, email, password }) => {
       const normalizedEmail = email.trim().toLowerCase();
+      const trimmedUsername = username.trim();
+      if (!trimmedUsername) {
+        toast.error("Username is required");
+        return false;
+      }
+
       if (users.some((user) => user.email === normalizedEmail)) {
         toast.error("An account with this email already exists");
         return false;
       }
 
-      if (creators.some((creator) => creator.username === username.trim())) {
+      const normalizedUsername = trimmedUsername.toLowerCase();
+      if (creators.some((creator) => creator.username.toLowerCase() === normalizedUsername)) {
         toast.error("Username is already taken");
         return false;
       }
@@ -204,7 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const profile = registerCreator({
         name: name.trim() || "New Creator",
-        username: username.trim(),
+        username: trimmedUsername,
         email: normalizedEmail,
         role: isAdminAccount ? "admin" : "creator",
       });
@@ -258,6 +267,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applyAuthUser, registerCreator, users],
   );
 
+  const changePassword = useCallback<AuthContextValue["changePassword"]>(
+    (currentPassword, newPassword) => {
+      if (!authUser) {
+        toast.error("Sign in to update your password");
+        return false;
+      }
+
+      if (authUser.provider !== "email") {
+        toast.info("Password changes are managed through your provider");
+        return false;
+      }
+
+      const trimmed = newPassword.trim();
+      if (trimmed.length < 8) {
+        toast.error("Password must be at least 8 characters");
+        return false;
+      }
+
+      let updatedSuccessfully = false;
+      setUsers((prev) => {
+        const index = prev.findIndex((user) => user.id === authUser.id);
+        if (index === -1) {
+          toast.error("Something went wrong. Try again.");
+          return prev;
+        }
+
+        const target = prev[index];
+        if (target.password !== currentPassword) {
+          toast.error("Current password is incorrect");
+          return prev;
+        }
+
+        const clone = [...prev];
+        clone[index] = { ...target, password: trimmed };
+        toast.success("Password updated");
+        updatedSuccessfully = true;
+        return clone;
+      });
+
+      return updatedSuccessfully;
+    },
+    [authUser],
+  );
+
+  const deleteAccountByCreatorId = useCallback<AuthContextValue["deleteAccountByCreatorId"]>(
+    (creatorId) => {
+      const removedAuthIds: string[] = [];
+      let removedCurrent = false;
+
+      setUsers((prev) => {
+        const remaining = prev.filter((user) => {
+          if (user.creatorId === creatorId) {
+            removedAuthIds.push(user.id);
+            if (user.id === currentAuthId) {
+              removedCurrent = true;
+            }
+            return false;
+          }
+          return true;
+        });
+        return remaining;
+      });
+
+      if (removedAuthIds.length === 0) {
+        return;
+      }
+
+      if (removedCurrent) {
+        setCurrentAuthId(null);
+        setSession({ mode: "guest" });
+      } else {
+        setSession((prev) => {
+          if (prev?.mode === "auth" && removedAuthIds.includes(prev.authId)) {
+            return { mode: "guest" };
+          }
+          return prev;
+        });
+      }
+    },
+    [currentAuthId],
+  );
+
   const continueAsGuest = useCallback(() => {
     setCurrentAuthId(null);
     setSession({ mode: "guest" });
@@ -307,8 +398,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = authUser ? isAdminEmail(authUser.email) : false;
 
   const value = useMemo<AuthContextValue>(
-    () => ({ authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, logout }),
-    [authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, logout],
+    () => ({ authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, changePassword, deleteAccountByCreatorId, logout }),
+    [authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, changePassword, deleteAccountByCreatorId, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

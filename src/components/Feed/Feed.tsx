@@ -56,7 +56,7 @@ const baseVideos: VideoItem[] = [
 ];
 
 export function Feed() {
-  const { creators } = useUser();
+  const { creators, findCreatorByUsername } = useUser();
   const [videos, setVideos] = useState<VideoItem[]>(baseVideos);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [selectedCreator, setSelectedCreator] = useState<string | null>(null);
@@ -114,6 +114,14 @@ export function Feed() {
     setSelectedVideo((current) => (current === videoId ? null : videoId));
   };
 
+  const handleCommentProfileNavigate = (username: string) => {
+    const creator = findCreatorByUsername(username);
+    if (!creator) {
+      return;
+    }
+    setSelectedCreator(creator.id);
+  };
+
   const activeCreator = selectedCreator ? creatorLookup[selectedCreator] ?? null : null;
 
   return (
@@ -146,6 +154,7 @@ export function Feed() {
           isOpen={commentsOpen}
           onClose={() => setSelectedVideo(null)}
           videoId={selectedVideo || ""}
+          onProfileNavigate={handleCommentProfileNavigate}
         />
       </div>
 

@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState, ReactNode, useCallback, useEffect } from "react";
+import { toast } from "sonner";
 import { isAdminEmail } from "@/lib/auth";
 
 export type UserRole = "creator" | "advertiser" | "admin";
@@ -34,6 +35,7 @@ export interface CreatorProfile {
   stats: CreatorStats;
   videos: CreatorVideo[];
   pinnedVideoIds: string[];
+  lastProfileUpdate?: string;
 }
 
 export type CurrentUser = CreatorProfile;
@@ -61,11 +63,16 @@ interface UserContextValue {
   getFollowingCount: (sourceId: string) => number;
   findCreatorByUsername: (username: string) => CreatorProfile | undefined;
   findCreatorById: (id: string) => CreatorProfile | undefined;
+  deleteCreatorById: (id: string) => CreatorProfile | null;
+  deleteCreatorByUsername: (username: string) => CreatorProfile | null;
 }
 
 const CREATORS_STORAGE_KEY = "adspark-creators";
 const FOLLOW_STORAGE_KEY = "adspark-follow-map";
 const CURRENT_USER_STORAGE_KEY = "adspark-current-user";
+
+const seedProfileUpdatedAt = new Date().toISOString();
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const creatorsSeed: CreatorProfile[] = [
   {
@@ -120,6 +127,7 @@ const creatorsSeed: CreatorProfile[] = [
       },
     ],
     pinnedVideoIds: ["cp-1", "cp-2", "cp-3"],
+    lastProfileUpdate: seedProfileUpdatedAt,
   },
   {
     id: "brand-master",
@@ -140,6 +148,7 @@ const creatorsSeed: CreatorProfile[] = [
     },
     videos: [],
     pinnedVideoIds: [],
+    lastProfileUpdate: seedProfileUpdatedAt,
   },
   {
     id: "ad-genius",
@@ -181,6 +190,7 @@ const creatorsSeed: CreatorProfile[] = [
       },
     ],
     pinnedVideoIds: ["ag-1", "ag-2", "ag-3"],
+    lastProfileUpdate: seedProfileUpdatedAt,
   },
   {
     id: "admin-fearless-2",
@@ -203,6 +213,7 @@ const creatorsSeed: CreatorProfile[] = [
     },
     videos: [],
     pinnedVideoIds: [],
+    lastProfileUpdate: seedProfileUpdatedAt,
   },
   {
     id: "admin-fearless-7",
@@ -225,6 +236,7 @@ const creatorsSeed: CreatorProfile[] = [
     },
     videos: [],
     pinnedVideoIds: [],
+    lastProfileUpdate: seedProfileUpdatedAt,
   },
   {
     id: "spotlight-brand",
@@ -245,6 +257,7 @@ const creatorsSeed: CreatorProfile[] = [
     },
     videos: [],
     pinnedVideoIds: [],
+    lastProfileUpdate: seedProfileUpdatedAt,
   },
 ];
 
@@ -296,6 +309,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             ? creator.stats.submittedJobs ?? 0
             : creator.stats.submittedJobs,
       },
+      lastProfileUpdate: creator.lastProfileUpdate ?? seedProfileUpdatedAt,
     };
   };
 
@@ -409,6 +423,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, [creators, currentUserId]);
 
+  const normalizeUsername = useCallback((value: string) => value.trim().toLowerCase(), []);
+
+  const isUsernameAvailable = useCallback(
+    (username: string, excludeId?: string) => {
+      const normalized = normalizeUsername(username);
+      if (!normalized) {
+        return false;
+      }
+      return !creators.some(
+        (creator) => creator.id !== excludeId && normalizeUsername(creator.username) === normalized,
+      );
+    },
+    [creators, normalizeUsername],
+  );
+
   const currentUser = useMemo<CurrentUser>(() => {
     const base = creators.find((creator) => creator.id === currentUserId);
     if (!base) {
@@ -442,18 +471,75 @@ export function UserProvider({ children }: { children: ReactNode }) {
     );
   }, [currentUserId]);
 
-  const updateProfile = useCallback<UserContextValue["updateProfile"]>((data) => {
-    setCreators((prev) =>
-      prev.map((creator) =>
-        creator.id === currentUserId
-          ? {
-              ...creator,
-              ...data,
-            }
-          : creator,
-      ),
-    );
-  }, [currentUserId]);
+  const updateProfile = useCallback<UserContextValue["updateProfile"]>(
+    (data) => {
+      const trimmedName = data.name?.trim();
+      const trimmedUsername = data.username?.trim();
+      const trimmedAvatar = data.avatar?.trim();
+      const trimmedBio = data.bio?.trim();
+
+      if (trimmedUsername && !isUsernameAvailable(trimmedUsername, currentUserId)) {
+        toast.error("Username is already taken");
+        return;
+      }
+
+      const now = Date.now();
+      const lastUpdate = currentUser.lastProfileUpdate ? new Date(currentUser.lastProfileUpdate).getTime() : 0;
+      const isAdmin = isAdminEmail(currentUser.email);
+
+      if (!isAdmin && lastUpdate && now - lastUpdate < ONE_WEEK_MS) {
+        const remaining = ONE_WEEK_MS - (now - lastUpdate);
+        const days = Math.ceil(remaining / (24 * 60 * 60 * 1000));
+        toast.warning(`You can update your profile again in ${days} day${days === 1 ? "" : "s"}.`);
+        return;
+      }
+
+      let hasChanges = false;
+      const updates: Partial<CreatorProfile> = {};
+
+      if (trimmedName && trimmedName !== currentUser.name) {
+        updates.name = trimmedName;
+        hasChanges = true;
+      }
+
+      const currentUsernameNormalized = currentUser.username.toLowerCase();
+
+      if (trimmedUsername && trimmedUsername.toLowerCase() !== currentUsernameNormalized) {
+        updates.username = trimmedUsername;
+        hasChanges = true;
+      }
+
+      if (data.avatar !== undefined && trimmedAvatar !== currentUser.avatar) {
+        updates.avatar = trimmedAvatar || currentUser.avatar;
+        hasChanges = true;
+      }
+
+      if (data.bio !== undefined && trimmedBio !== currentUser.bio) {
+        updates.bio = trimmedBio ?? "";
+        hasChanges = true;
+      }
+
+      if (!hasChanges) {
+        toast.info("No changes detected");
+        return;
+      }
+
+      setCreators((prev) =>
+        prev.map((creator) =>
+          creator.id === currentUserId
+            ? {
+                ...creator,
+                ...updates,
+                lastProfileUpdate: new Date(now).toISOString(),
+              }
+            : creator,
+        ),
+      );
+
+      toast.success("Profile updated");
+    },
+    [currentUser, currentUserId, isUsernameAvailable],
+  );
 
   const updatePinnedVideos = useCallback<UserContextValue["updatePinnedVideos"]>((videoIds) => {
     setCreators((prev) =>
@@ -472,16 +558,33 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const id = createId();
     const requestedRole = payload.role ?? "creator";
     const enforcedRole: UserRole = isAdminEmail(payload.email) ? "admin" : requestedRole === "admin" ? "creator" : requestedRole;
+    let desiredUsername = payload.username?.trim() || `user-${id.slice(0, 6)}`;
+
+    if (!isUsernameAvailable(desiredUsername)) {
+      const base = desiredUsername.replace(/\s+/g, "");
+      let attempt = 1;
+      let candidate = `${base}${attempt}`;
+      while (!isUsernameAvailable(candidate)) {
+        attempt++;
+        candidate = `${base}${attempt}`;
+      }
+      desiredUsername = candidate;
+    }
+
+    const displayName = payload.name?.trim() || desiredUsername;
     const newCreator: CreatorProfile = {
       id,
-      name: payload.name,
-      username: payload.username,
+      name: displayName,
+      username: desiredUsername,
       email: payload.email,
       role: enforcedRole,
       avatar:
         payload.avatar ??
-        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(payload.name)}&backgroundColor=B8DBD9`,
-      bio: role === "creator" ? "New creator on Ad Spark." : "New advertiser on Ad Spark.",
+        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=B8DBD9`,
+      bio:
+        enforcedRole === "creator" || enforcedRole === "admin"
+          ? "New creator on Ad Spark."
+          : "New advertiser on Ad Spark.",
       stats: {
         videos: 0,
         likes: 0,
@@ -494,12 +597,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       },
       videos: [],
       pinnedVideoIds: [],
+      lastProfileUpdate: new Date().toISOString(),
     };
 
     setCreators((prev) => [...prev, newCreator]);
     setFollowMap((prev) => ({ ...prev, [id]: new Set() }));
     return newCreator;
-  }, []);
+  }, [isUsernameAvailable]);
 
   const toggleFollow = useCallback<UserContextValue["toggleFollow"]>((targetId) => {
     if (targetId === currentUserId) return;
@@ -516,6 +620,50 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
   }, [currentUserId]);
 
+  const deleteCreatorById = useCallback<UserContextValue["deleteCreatorById"]>((id) => {
+    let removed: CreatorProfile | null = null;
+    let nextCreators: CreatorProfile[] | null = null;
+
+    setCreators((prev) => {
+      const index = prev.findIndex((creator) => creator.id === id);
+      if (index === -1) {
+        return prev;
+      }
+      removed = prev[index];
+      nextCreators = prev.filter((creator) => creator.id !== id);
+      return nextCreators!;
+    });
+
+    if (!removed) {
+      return null;
+    }
+
+    setFollowMap((prev) => {
+      const next: FollowMap = {};
+      Object.entries(prev).forEach(([key, followers]) => {
+        if (key === id) {
+          return;
+        }
+        const updated = new Set(followers);
+        updated.delete(id);
+        next[key] = updated;
+      });
+      return next;
+    });
+
+    setCurrentUserId((prevId) => {
+      if (prevId === id) {
+        if (nextCreators && nextCreators.length > 0) {
+          return nextCreators[0].id;
+        }
+        return creatorsSeed[0]?.id ?? prevId;
+      }
+      return prevId;
+    });
+
+    return removed;
+  }, []);
+
   const isFollowing = useCallback<UserContextValue["isFollowing"]>((targetId) => {
     return followMap[targetId]?.has(currentUserId) ?? false;
   }, [followMap, currentUserId]);
@@ -529,11 +677,25 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [followMap]);
 
   const findCreatorByUsername = useCallback(
-    (username: string) => creators.find((creator) => creator.username === username),
-    [creators],
+    (username: string) => {
+      const normalized = normalizeUsername(username);
+      return creators.find((creator) => normalizeUsername(creator.username) === normalized);
+    },
+    [creators, normalizeUsername],
   );
 
   const findCreatorById = useCallback((id: string) => creators.find((creator) => creator.id === id), [creators]);
+
+  const deleteCreatorByUsername = useCallback<UserContextValue["deleteCreatorByUsername"]>(
+    (username) => {
+      const target = findCreatorByUsername(username.trim());
+      if (!target) {
+        return null;
+      }
+      return deleteCreatorById(target.id);
+    },
+    [deleteCreatorById, findCreatorByUsername],
+  );
 
   const value = useMemo<UserContextValue>(
     () => ({
@@ -551,6 +713,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       getFollowingCount,
       findCreatorByUsername,
       findCreatorById,
+      deleteCreatorById,
+      deleteCreatorByUsername,
     }),
     [
       currentUser,
@@ -566,6 +730,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       getFollowingCount,
       findCreatorByUsername,
       findCreatorById,
+      deleteCreatorById,
+      deleteCreatorByUsername,
     ],
   );
 

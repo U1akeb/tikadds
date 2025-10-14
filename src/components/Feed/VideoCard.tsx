@@ -88,7 +88,7 @@ export function VideoCard({
   };
 
   return (
-    <div className="relative h-screen w-full snap-start snap-always">
+    <div className="relative h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always md:h-screen md:min-h-0">
       <div className="absolute inset-0 bg-card" onDoubleClick={handleDoubleClick}>
         <video
           className="h-full w-full object-cover"
@@ -106,8 +106,8 @@ export function VideoCard({
         )}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-20 p-6 bg-gradient-to-t from-background/80 to-transparent">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="absolute bottom-0 left-0 right-16 bg-gradient-to-t from-background/85 via-background/20 to-transparent p-4 pb-24 md:right-20 md:p-6 md:pb-10">
+        <div className="mb-3 flex items-center gap-3">
           <button
             onClick={onProfileClick}
             className="h-12 w-12 rounded-full overflow-hidden border-2 border-primary/40 transition-smooth hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -127,7 +127,7 @@ export function VideoCard({
           </Button>
         </div>
 
-        <p className="text-sm mb-3 line-clamp-2">{description}</p>
+        <p className="mb-3 max-w-[75%] text-sm leading-relaxed line-clamp-3 md:max-w-[60%]">{description}</p>
 
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Music className="h-4 w-4" />
@@ -135,7 +135,7 @@ export function VideoCard({
         </div>
       </div>
 
-      <div className="absolute right-4 bottom-24 flex flex-col gap-6 items-center">
+      <div className="absolute right-4 bottom-28 flex flex-col items-center gap-6 md:bottom-24">
         <button
           onClick={onProfileClick}
           className="flex flex-col items-center gap-1 transition-smooth"

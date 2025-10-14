@@ -65,8 +65,9 @@ export default function Profile() {
     isFollowing,
     getFollowersCount,
     getFollowingCount,
+    deleteCreatorById,
   } = useUser();
-  const { authUser, isAdmin, sessionMode } = useAuth();
+  const { authUser, isAdmin, sessionMode, deleteAccountByCreatorId } = useAuth();
   const { jobs } = useJobs();
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -113,6 +114,24 @@ export default function Profile() {
       return;
     }
     toggleFollow(profileUser.id);
+  };
+
+  const handleAdminDeleteAccount = () => {
+    if (!isAdmin || isOwnProfile) return;
+    const confirmed = window.confirm(`Delete @${profileUser.username}'s account? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    const removed = deleteCreatorById(profileUser.id);
+    if (!removed) {
+      toast.error("Unable to delete this account");
+      return;
+    }
+
+    deleteAccountByCreatorId(profileUser.id);
+    toast.success(`Deleted @${profileUser.username}`);
+    navigate("/");
   };
 
   const showMessageButton = !isOwnProfile;
@@ -187,6 +206,11 @@ export default function Profile() {
                       <Button variant="outline" onClick={() => setIsChatOpen(true)}>
                         <MessageCircle className="mr-2 h-4 w-4" /> Message
                       </Button>
+                      {isAdmin && (
+                        <Button variant="destructive" onClick={handleAdminDeleteAccount}>
+                          Delete account
+                        </Button>
+                      )}
                     </div>
                   )}
 
