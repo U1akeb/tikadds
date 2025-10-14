@@ -75,11 +75,11 @@ export default function Profile() {
   const isOwnProfile = profileUser.id === currentUser.id;
 
   useEffect(() => {
-    if (sessionMode === "guest" && !viewUsername) {
+    if (sessionMode === "guest" && !authUser && !viewUsername) {
       toast.info("Sign in to access your profile");
       navigate("/login");
     }
-  }, [sessionMode, viewUsername, navigate]);
+  }, [sessionMode, authUser, viewUsername, navigate]);
 
   const requesterJobs = useMemo(
     () => jobs.filter((job) => job.requesterId === profileUser.id),

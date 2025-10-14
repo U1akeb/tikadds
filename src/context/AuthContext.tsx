@@ -52,6 +52,20 @@ const authSeed: AuthUser[] = [
     password: "password123",
     creatorId: "brand-master",
   },
+  {
+    id: "auth-fearless-2",
+    email: "fearlessbeke2@gmail.com",
+    provider: "email",
+    password: "admin123",
+    creatorId: "admin-fearless-2",
+  },
+  {
+    id: "auth-fearless-7",
+    email: "fearlessbeke7@gmail.com",
+    provider: "email",
+    password: "admin123",
+    creatorId: "admin-fearless-7",
+  },
 ];
 
 const createId = () =>
