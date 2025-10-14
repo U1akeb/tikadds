@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { CreatorProfile } from "@/context/UserContext";
 import { toast } from "sonner";
+import { useUser } from "@/context/UserContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface VideoCardProps {
   id: string;
@@ -36,6 +38,8 @@ export function VideoCard({
   const [likeCount, setLikeCount] = useState(likes);
   const [showHeart, setShowHeart] = useState(false);
   const [shareCount, setShareCount] = useState(shares);
+  const { toggleFollow, isFollowing } = useUser();
+  const { authUser } = useAuth();
 
   useEffect(() => {
     setShareCount(shares);
@@ -89,6 +93,22 @@ export function VideoCard({
     setTimeout(() => setShowHeart(false), 1000);
   };
 
+  const alreadyFollowing = creator.id === authUser?.creatorId || isFollowing(creator.id);
+
+  const handleFollow = () => {
+    if (!authUser) {
+      toast.info("Sign in to follow creators");
+      return;
+    }
+
+    if (alreadyFollowing) {
+      return;
+    }
+
+    toggleFollow(creator.id);
+    toast.success(`You're now following ${creator.name}`);
+  };
+
   return (
     <div
       className="relative h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always md:h-screen md:min-h-0"
@@ -127,8 +147,16 @@ export function VideoCard({
             )}
           </button>
           <span className="font-semibold text-lg">{username}</span>
-          <Button size="sm" className="gradient-primary text-white border-0 h-8">
-            Follow
+          <Button
+            size="sm"
+            className={cn(
+              "border-0 h-8",
+              alreadyFollowing ? "bg-muted text-muted-foreground" : "gradient-primary text-white"
+            )}
+            onClick={handleFollow}
+            disabled={alreadyFollowing}
+          >
+            {alreadyFollowing ? "Following" : "Follow"}
           </Button>
         </div>
 
