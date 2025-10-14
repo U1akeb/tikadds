@@ -35,7 +35,7 @@ export interface CreatorProfile {
   pinnedVideoIds: string[];
 }
 
-export interface CurrentUser extends CreatorProfile {}
+export type CurrentUser = CreatorProfile;
 
 interface RegisterCreatorPayload {
   name: string;

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useUser } from "@/context/UserContext";
 import { useJobs, JobMedia } from "@/context/JobContext";
+import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
 const DEFAULT_TAGS = ["ad", "promo", "tutorial", "review", "launch", "ugc", "bts"];
@@ -20,6 +21,7 @@ const generateId = () =>
     : Math.random().toString(36).slice(2);
 
 export default function CreateJob() {
+  const { authUser } = useAuth();
   const { currentUser, isContentRequester } = useUser();
   const { createJob } = useJobs();
   const navigate = useNavigate();
@@ -104,6 +106,29 @@ export default function CreateJob() {
     toast.success("Job released! Creators can now submit their videos.");
     navigate(`/jobs?highlight=${job.id}`);
   };
+
+  if (!authUser) {
+    return (
+      <div className="flex min-h-screen bg-background">
+        <Sidebar />
+        <main className="flex-1 pt-20 md:pt-0 md:pl-28">
+          <div className="mx-auto max-w-xl px-4 py-16">
+            <Card className="border-border/60 text-center">
+              <CardHeader>
+                <CardTitle>Sign in required</CardTitle>
+                <CardDescription>Log in as an advertiser to release new campaign briefs.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button className="w-full gradient-primary text-white" onClick={() => navigate("/login") }>
+                  Go to login
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background">

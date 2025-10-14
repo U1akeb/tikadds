@@ -1,6 +1,6 @@
 import { ReactNode, createContext, useCallback, useContext, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useUser, CreatorProfile } from "./UserContext";
+import { useUser } from "./UserContext";
 
 type AuthProviderType = "email" | "google" | "facebook";
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart, MessageCircle, Share2, Music, UserCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ interface VideoCardProps {
 }
 
 export function VideoCard({
+  id,
   videoUrl,
   username,
   description,
@@ -32,6 +33,11 @@ export function VideoCard({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(likes);
   const [showHeart, setShowHeart] = useState(false);
+  const [shareCount, setShareCount] = useState(shares);
+
+  useEffect(() => {
+    setShareCount(shares);
+  }, [shares]);
 
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/?video=${id}` : videoUrl;
 
@@ -45,9 +51,11 @@ export function VideoCard({
     try {
       if (navigator.share) {
         await navigator.share(shareData);
+        setShareCount((count) => count + 1);
         toast.success("Shared successfully");
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(shareUrl);
+        setShareCount((count) => count + 1);
         toast.success("Link copied to clipboard");
       } else {
         throw new Error("Sharing not supported");
@@ -185,7 +193,7 @@ export function VideoCard({
           <div className="h-12 w-12 rounded-full bg-background/20 backdrop-blur-sm flex items-center justify-center">
             <Share2 className="h-7 w-7" />
           </div>
-          <span className="text-xs font-medium">{shares.toLocaleString()}</span>
+          <span className="text-xs font-medium">{shareCount.toLocaleString()}</span>
         </button>
       </div>
     </div>

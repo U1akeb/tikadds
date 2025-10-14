@@ -1,10 +1,10 @@
 import { useMemo, type ComponentType } from "react";
-import { Home, Briefcase, User, Menu } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { Home, Briefcase, User, Menu, LogOut } from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useUser } from "@/context/UserContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useAuth } from "@/context/AuthContext";
 
 interface NavigationItem {
   name: string;
@@ -12,7 +12,7 @@ interface NavigationItem {
   path: string;
 }
 
-function MobileNav({ items }: { items: NavigationItem[] }) {
+function MobileNav({ items, onLogout, isAuthenticated }: { items: NavigationItem[]; onLogout: () => void; isAuthenticated: boolean }) {
   return (
     <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border bg-sidebar/90 px-4 py-3 backdrop-blur md:hidden">
       <div className="gradient-primary h-10 w-10 rounded-xl flex items-center justify-center font-bold text-white text-xl">
@@ -46,13 +46,24 @@ function MobileNav({ items }: { items: NavigationItem[] }) {
               </NavLink>
             ))}
           </nav>
+          <div className="border-t border-border p-3">
+            {isAuthenticated ? (
+              <Button variant="outline" className="w-full" onClick={onLogout}>
+                <LogOut className="mr-2 h-4 w-4" /> Log out
+              </Button>
+            ) : (
+              <Button asChild className="w-full gradient-primary text-white">
+                <NavLink to="/login">Sign in</NavLink>
+              </Button>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
     </div>
   );
 }
 
-function DesktopNav({ items }: { items: NavigationItem[] }) {
+function DesktopNav({ items, onLogout, isAuthenticated }: { items: NavigationItem[]; onLogout: () => void; isAuthenticated: boolean }) {
   return (
     <aside className="hidden md:fixed md:left-0 md:top-0 md:z-40 md:flex md:h-screen md:w-24 md:flex-col md:items-center md:gap-8 md:border-r md:border-border md:bg-sidebar md:py-8">
       <div className="gradient-primary h-10 w-10 rounded-xl flex items-center justify-center font-bold text-white text-xl">
@@ -93,12 +104,26 @@ function DesktopNav({ items }: { items: NavigationItem[] }) {
           </NavLink>
         ))}
       </nav>
+
+      <div className="mt-auto w-full px-3">
+        {isAuthenticated ? (
+          <Button variant="outline" className="w-full" onClick={onLogout}>
+            <LogOut className="mr-2 h-4 w-4" /> Log out
+          </Button>
+        ) : (
+          <Button asChild className="w-full gradient-primary text-white">
+            <NavLink to="/login">Sign in</NavLink>
+          </Button>
+        )}
+      </div>
     </aside>
   );
 }
 
 export function Sidebar() {
   const { isContentRequester } = useUser();
+  const { authUser, logout } = useAuth();
+  const navigate = useNavigate();
 
   const navigation = useMemo<NavigationItem[]>(() => {
     const items: NavigationItem[] = [
@@ -112,8 +137,22 @@ export function Sidebar() {
 
   return (
     <>
-      <MobileNav items={navigation} />
-      <DesktopNav items={navigation} />
+      <MobileNav
+        items={navigation}
+        isAuthenticated={Boolean(authUser)}
+        onLogout={() => {
+          logout();
+          navigate("/login");
+        }}
+      />
+      <DesktopNav
+        items={navigation}
+        isAuthenticated={Boolean(authUser)}
+        onLogout={() => {
+          logout();
+          navigate("/login");
+        }}
+      />
       <div className="h-16 md:hidden" />
     </>
   );

@@ -6,8 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Sidebar } from "@/components/Sidebar/Sidebar";
+import { useAuth } from "@/context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 export default function Upload() {
+  const { authUser } = useAuth();
+  const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -36,6 +40,29 @@ export default function Upload() {
     setDescription("");
     setPreview("");
   };
+
+  if (!authUser) {
+    return (
+      <div className="flex min-h-screen bg-background">
+        <Sidebar />
+        <main className="flex-1 pt-20 md:pt-0 md:pl-28">
+          <div className="mx-auto max-w-xl px-4 py-16">
+            <Card className="border-border/60 text-center">
+              <CardHeader>
+                <CardTitle>Sign in required</CardTitle>
+                <CardDescription>Log in to upload new videos to your showcase.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button className="w-full gradient-primary text-white" onClick={() => navigate("/login")}>
+                  Go to login
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background">

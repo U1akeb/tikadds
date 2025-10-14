@@ -29,6 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { useUser, UserRole, CreatorStats, CreatorVideo, CreatorProfile } from "@/context/UserContext";
 import { useJobs } from "@/context/JobContext";
+import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +66,7 @@ export default function Profile() {
     getFollowersCount,
     getFollowingCount,
   } = useUser();
+  const { authUser } = useAuth();
   const { jobs } = useJobs();
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -90,6 +92,15 @@ export default function Profile() {
   const followersCount = getFollowersCount(profileUser.id);
   const followingCount = getFollowingCount(profileUser.id);
   const alreadyFollowing = !isOwnProfile && isFollowing(profileUser.id);
+
+  const handleFollowToggle = () => {
+    if (!authUser) {
+      toast.info("Sign in to follow creators");
+      navigate("/login");
+      return;
+    }
+    toggleFollow(profileUser.id);
+  };
 
   const showMessageButton = !isOwnProfile;
 
@@ -155,7 +166,7 @@ export default function Profile() {
                       <Button
                         variant={alreadyFollowing ? "secondary" : "default"}
                         className={alreadyFollowing ? "bg-muted text-foreground" : "gradient-primary text-white"}
-                        onClick={() => toggleFollow(profileUser.id)}
+                        onClick={handleFollowToggle}
                       >
                         <UserPlus className="mr-2 h-4 w-4" />
                         {alreadyFollowing ? "Following" : "Follow"}
