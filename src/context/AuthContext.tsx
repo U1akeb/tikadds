@@ -11,6 +11,10 @@ interface AuthUser {
   provider: AuthProviderType;
   password?: string;
   creatorId: string;
+  status?: "active" | "banned";
+  banReason?: string;
+  bannedUntil?: string | null;
+  banIssuedAt?: string;
 }
 
 interface RegisterWithEmailPayload {
@@ -29,10 +33,12 @@ interface AuthContextValue {
   isAdmin: boolean;
   loginWithEmail: (email: string, password: string) => boolean;
   registerWithEmail: (payload: RegisterWithEmailPayload) => boolean;
-  loginWithProvider: (provider: Exclude<AuthProviderType, "email">) => boolean;
+  loginWithProvider: (provider: Exclude<AuthProviderType, "email">, selectedEmail?: string) => boolean;
   continueAsGuest: () => void;
   changePassword: (currentPassword: string, newPassword: string) => boolean;
   deleteAccountByCreatorId: (creatorId: string) => void;
+  banAccountByCreatorId: (creatorId: string, reason: string, bannedUntil?: string | null) => void;
+  unbanAccountByCreatorId: (creatorId: string) => void;
   logout: () => void;
 }
 
@@ -46,6 +52,7 @@ const authSeed: AuthUser[] = [
     provider: "email",
     password: "password123",
     creatorId: "creator-pro",
+    status: "active",
   },
   {
     id: "auth-brand-master",
@@ -53,6 +60,7 @@ const authSeed: AuthUser[] = [
     provider: "email",
     password: "password123",
     creatorId: "brand-master",
+    status: "active",
   },
   {
     id: "auth-fearless-2",
@@ -60,6 +68,7 @@ const authSeed: AuthUser[] = [
     provider: "email",
     password: "admin123",
     creatorId: "admin-fearless-2",
+    status: "active",
   },
   {
     id: "auth-fearless-7",
@@ -67,6 +76,7 @@ const authSeed: AuthUser[] = [
     provider: "email",
     password: "admin123",
     creatorId: "admin-fearless-7",
+    status: "active",
   },
 ];
 
@@ -121,6 +131,27 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { registerCreator, setCurrentUserId, creators } = useUser();
 
+  const normalizeAuthUser = useCallback((user: AuthUser): AuthUser => {
+    const status = user.status ?? "active";
+    if (status === "banned" && user.bannedUntil) {
+      const expires = new Date(user.bannedUntil).getTime();
+      if (Number.isFinite(expires) && expires < Date.now()) {
+        return {
+          ...user,
+          status: "active",
+          bannedUntil: null,
+          banReason: undefined,
+          banIssuedAt: undefined,
+        };
+      }
+    }
+    return {
+      ...user,
+      status,
+      bannedUntil: user.bannedUntil ?? null,
+    };
+  }, []);
+
   const [users, setUsers] = useState<AuthUser[]>(() => {
     const stored = readStoredUsers();
     const byId = new Map<string, AuthUser>();
@@ -130,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         byId.set(user.id, user);
       }
     });
-    return Array.from(byId.values());
+    return Array.from(byId.values()).map((user) => normalizeAuthUser(user));
   });
 
   const initialSession = useMemo<SessionState>(() => readStoredSession(), []);
@@ -182,7 +213,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      applyAuthUser(existing);
+      let userToApply = existing;
+      if (existing.status === "banned") {
+        const expires = existing.bannedUntil ? new Date(existing.bannedUntil).getTime() : null;
+        const now = Date.now();
+        const expired = expires !== null && Number.isFinite(expires) && expires < now;
+        if (expired) {
+          userToApply = {
+            ...existing,
+            status: "active",
+            bannedUntil: null,
+            banReason: undefined,
+            banIssuedAt: undefined,
+          };
+          setUsers((prev) => prev.map((user) => (user.id === existing.id ? userToApply : user)));
+        } else {
+          toast.error(
+            existing.bannedUntil
+              ? `This account is banned until ${new Date(existing.bannedUntil).toLocaleString()}`
+              : "This account has been permanently banned.",
+          );
+          return false;
+        }
+      }
+
+      applyAuthUser(userToApply);
       toast.success("Logged in successfully");
       return true;
     },
@@ -224,6 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         provider: "email",
         creatorId: profile.id,
+        status: "active",
       };
 
       setUsers((prev) => [...prev, newAuthUser]);
@@ -235,14 +291,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithProvider = useCallback<AuthContextValue["loginWithProvider"]>(
-    (provider) => {
-      const providerEmail = `${provider}@demo.adspark.dev`;
+    (provider, selectedEmail) => {
+      const providerEmail = (selectedEmail?.trim().toLowerCase() || `${provider}@demo.adspark.dev`).replace(
+        /\s+/g,
+        "",
+      );
       let existing = users.find((user) => user.email === providerEmail && user.provider === provider);
 
       if (!existing) {
+        const displayName = selectedEmail ? selectedEmail.split("@")[0] : provider === "google" ? "Google" : "Facebook";
+        const baseUsername = displayName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || provider;
         const generatedProfile = registerCreator({
-          name: provider === "google" ? "Google Creator" : "Facebook Creator",
-          username: `${provider}-${Math.random().toString(36).slice(2, 8)}`,
+          name: `${displayName} Creator`,
+          username: `${baseUsername}-${Math.random().toString(36).slice(2, 8)}`,
           email: providerEmail,
           role: "creator",
           avatar:
@@ -256,12 +317,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: providerEmail,
           provider,
           creatorId: generatedProfile.id,
+          status: "active",
         };
         setUsers((prev) => [...prev, existing!]);
       }
 
-      applyAuthUser(existing);
-      toast.success(`Signed in with ${provider === "google" ? "Google" : "Facebook"}`);
+      let userToApply = existing;
+      if (existing.status === "banned") {
+        const expires = existing.bannedUntil ? new Date(existing.bannedUntil).getTime() : null;
+        const now = Date.now();
+        const expired = expires !== null && Number.isFinite(expires) && expires < now;
+        if (expired) {
+          userToApply = {
+            ...existing,
+            status: "active",
+            bannedUntil: null,
+            banReason: undefined,
+            banIssuedAt: undefined,
+          };
+          setUsers((prev) => prev.map((user) => (user.id === existing!.id ? userToApply : user)));
+        } else {
+          toast.error(
+            existing.bannedUntil
+              ? `This account is banned until ${new Date(existing.bannedUntil).toLocaleString()}`
+              : "This account has been permanently banned.",
+          );
+          return false;
+        }
+      }
+
+      applyAuthUser(userToApply);
+        toast.success(`Signed in with ${provider === "google" ? "Google" : "Facebook"}`);
       return true;
     },
     [applyAuthUser, registerCreator, users],
@@ -349,6 +435,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [currentAuthId],
   );
 
+  const banAccountByCreatorId = useCallback<AuthContextValue["banAccountByCreatorId"]>(
+    (creatorId, reason, bannedUntil = null) => {
+      const bannedUser = users.find((user) => user.creatorId === creatorId);
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.creatorId === creatorId
+            ? {
+                ...user,
+                status: "banned",
+                banReason: reason,
+                bannedUntil: bannedUntil ?? null,
+                banIssuedAt: new Date().toISOString(),
+              }
+            : user,
+        ),
+      );
+
+      if (bannedUser && bannedUser.id === currentAuthId) {
+        setCurrentAuthId(null);
+        setSession({ mode: "guest" });
+        toast.info("Your account has been banned and you have been signed out.");
+      }
+    },
+    [currentAuthId, users],
+  );
+
+  const unbanAccountByCreatorId = useCallback<AuthContextValue["unbanAccountByCreatorId"]>(
+    (creatorId) => {
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.creatorId === creatorId
+            ? {
+                ...user,
+                status: "active",
+                banReason: undefined,
+                bannedUntil: null,
+                banIssuedAt: undefined,
+              }
+            : user,
+        ),
+      );
+    },
+    [],
+  );
+
   const continueAsGuest = useCallback(() => {
     setCurrentAuthId(null);
     setSession({ mode: "guest" });
@@ -398,8 +529,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = authUser ? isAdminEmail(authUser.email) : false;
 
   const value = useMemo<AuthContextValue>(
-    () => ({ authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, changePassword, deleteAccountByCreatorId, logout }),
-    [authUser, sessionMode, isAdmin, loginWithEmail, registerWithEmail, loginWithProvider, continueAsGuest, changePassword, deleteAccountByCreatorId, logout],
+    () => ({
+      authUser,
+      sessionMode,
+      isAdmin,
+      loginWithEmail,
+      registerWithEmail,
+      loginWithProvider,
+      continueAsGuest,
+      changePassword,
+      deleteAccountByCreatorId,
+      banAccountByCreatorId,
+      unbanAccountByCreatorId,
+      logout,
+    }),
+    [
+      authUser,
+      sessionMode,
+      isAdmin,
+      loginWithEmail,
+      registerWithEmail,
+      loginWithProvider,
+      continueAsGuest,
+      changePassword,
+      deleteAccountByCreatorId,
+      banAccountByCreatorId,
+      unbanAccountByCreatorId,
+      logout,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

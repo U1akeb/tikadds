@@ -20,6 +20,30 @@ export interface CreatorVideo {
   title: string;
   thumbnail: string;
   src: string;
+  banInfo?: VideoBanInfo;
+}
+
+export interface VideoBanInfo {
+  isBanned: boolean;
+  reason?: string;
+  bannedUntil?: string | null;
+  issuedAt?: string;
+  issuedBy?: string;
+}
+
+export interface CreatorWarning {
+  id: string;
+  reason: string;
+  issuedAt: string;
+  issuedBy: string;
+}
+
+export interface AccountBanInfo {
+  isBanned: boolean;
+  reason?: string;
+  bannedUntil?: string | null;
+  issuedAt?: string;
+  issuedBy?: string;
 }
 
 export interface CreatorProfile {
@@ -36,6 +60,8 @@ export interface CreatorProfile {
   videos: CreatorVideo[];
   pinnedVideoIds: string[];
   lastProfileUpdate?: string;
+  warnings: CreatorWarning[];
+  banInfo: AccountBanInfo;
 }
 
 export type CurrentUser = CreatorProfile;
@@ -65,6 +91,12 @@ interface UserContextValue {
   findCreatorById: (id: string) => CreatorProfile | undefined;
   deleteCreatorById: (id: string) => CreatorProfile | null;
   deleteCreatorByUsername: (username: string) => CreatorProfile | null;
+  issueWarning: (username: string, reason: string, issuedBy: string) => boolean;
+  banAccount: (username: string, reason: string, bannedUntil?: string | null, issuedBy?: string) => boolean;
+  unbanAccount: (username: string) => boolean;
+  deleteVideo: (username: string, videoId: string) => boolean;
+  banVideo: (username: string, videoId: string, reason: string, bannedUntil?: string | null, issuedBy?: string) => boolean;
+  unbanVideo: (username: string, videoId: string) => boolean;
 }
 
 const CREATORS_STORAGE_KEY = "adspark-creators";
@@ -128,6 +160,8 @@ const creatorsSeed: CreatorProfile[] = [
     ],
     pinnedVideoIds: ["cp-1", "cp-2", "cp-3"],
     lastProfileUpdate: seedProfileUpdatedAt,
+    warnings: [],
+    banInfo: { isBanned: false },
   },
   {
     id: "brand-master",
@@ -149,6 +183,8 @@ const creatorsSeed: CreatorProfile[] = [
     videos: [],
     pinnedVideoIds: [],
     lastProfileUpdate: seedProfileUpdatedAt,
+    warnings: [],
+    banInfo: { isBanned: false },
   },
   {
     id: "ad-genius",
@@ -191,6 +227,8 @@ const creatorsSeed: CreatorProfile[] = [
     ],
     pinnedVideoIds: ["ag-1", "ag-2", "ag-3"],
     lastProfileUpdate: seedProfileUpdatedAt,
+    warnings: [],
+    banInfo: { isBanned: false },
   },
   {
     id: "admin-fearless-2",
@@ -214,6 +252,8 @@ const creatorsSeed: CreatorProfile[] = [
     videos: [],
     pinnedVideoIds: [],
     lastProfileUpdate: seedProfileUpdatedAt,
+    warnings: [],
+    banInfo: { isBanned: false },
   },
   {
     id: "admin-fearless-7",
@@ -237,6 +277,8 @@ const creatorsSeed: CreatorProfile[] = [
     videos: [],
     pinnedVideoIds: [],
     lastProfileUpdate: seedProfileUpdatedAt,
+    warnings: [],
+    banInfo: { isBanned: false },
   },
   {
     id: "spotlight-brand",
@@ -258,6 +300,8 @@ const creatorsSeed: CreatorProfile[] = [
     videos: [],
     pinnedVideoIds: [],
     lastProfileUpdate: seedProfileUpdatedAt,
+    warnings: [],
+    banInfo: { isBanned: false },
   },
 ];
 
@@ -287,14 +331,58 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return map;
   };
 
+  const normalizeVideoBan = (ban?: VideoBanInfo): VideoBanInfo => {
+    if (!ban?.isBanned) {
+      return { isBanned: false };
+    }
+    if (ban.bannedUntil) {
+      const expires = new Date(ban.bannedUntil).getTime();
+      if (Number.isFinite(expires) && expires < Date.now()) {
+        return { isBanned: false };
+      }
+    }
+    return {
+      isBanned: true,
+      reason: ban.reason,
+      bannedUntil: ban.bannedUntil ?? null,
+      issuedAt: ban.issuedAt ?? new Date().toISOString(),
+      issuedBy: ban.issuedBy,
+    };
+  };
+
+  const normalizeAccountBan = (ban?: AccountBanInfo): AccountBanInfo => {
+    if (!ban?.isBanned) {
+      return { isBanned: false };
+    }
+    if (ban.bannedUntil) {
+      const expires = new Date(ban.bannedUntil).getTime();
+      if (Number.isFinite(expires) && expires < Date.now()) {
+        return { isBanned: false };
+      }
+    }
+    return {
+      isBanned: true,
+      reason: ban.reason,
+      bannedUntil: ban.bannedUntil ?? null,
+      issuedAt: ban.issuedAt ?? new Date().toISOString(),
+      issuedBy: ban.issuedBy,
+    };
+  };
+
   const sanitizeCreator = (creator: CreatorProfile): CreatorProfile => {
     const admin = isAdminEmail(creator.email);
-    const safeRole: UserRole = admin ? "admin" : creator.role === "admin" ? "creator" : creator.role;
+    const safeRole: UserRole = !admin && creator.role === "admin" ? "creator" : creator.role;
+    const normalizedVideos = (creator.videos ?? []).map((video) => ({
+      ...video,
+      banInfo: normalizeVideoBan(video.banInfo),
+    }));
+    const banInfo = normalizeAccountBan(creator.banInfo);
+    const warnings = Array.isArray(creator.warnings) ? creator.warnings : [];
     return {
       ...creator,
       role: safeRole,
       stats: {
-        videos: creator.stats.videos,
+        videos: normalizedVideos.length,
         likes: creator.stats.likes,
         shares: creator.stats.shares,
         comments: creator.stats.comments,
@@ -310,6 +398,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
             : creator.stats.submittedJobs,
       },
       lastProfileUpdate: creator.lastProfileUpdate ?? seedProfileUpdatedAt,
+      videos: normalizedVideos,
+      warnings,
+      banInfo,
     };
   };
 
@@ -453,7 +544,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
           return creator;
         }
 
-        const enforcedRole: UserRole = isAdminEmail(creator.email) ? "admin" : role === "admin" ? creator.role : role;
+        const adminEmail = isAdminEmail(creator.email);
+        const enforcedRole: UserRole = !adminEmail && role === "admin" ? creator.role : role;
 
         return {
           ...creator,
@@ -557,7 +649,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const registerCreator = useCallback<UserContextValue["registerCreator"]>((payload) => {
     const id = createId();
     const requestedRole = payload.role ?? "creator";
-    const enforcedRole: UserRole = isAdminEmail(payload.email) ? "admin" : requestedRole === "admin" ? "creator" : requestedRole;
+    const adminEmail = isAdminEmail(payload.email);
+    const enforcedRole: UserRole = !adminEmail && requestedRole === "admin" ? "creator" : requestedRole;
     let desiredUsername = payload.username?.trim() || `user-${id.slice(0, 6)}`;
 
     if (!isUsernameAvailable(desiredUsername)) {
@@ -598,6 +691,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       videos: [],
       pinnedVideoIds: [],
       lastProfileUpdate: new Date().toISOString(),
+      warnings: [],
+      banInfo: { isBanned: false },
     };
 
     setCreators((prev) => [...prev, newCreator]);
@@ -697,6 +792,228 @@ export function UserProvider({ children }: { children: ReactNode }) {
     [deleteCreatorById, findCreatorByUsername],
   );
 
+  const issueWarning = useCallback<UserContextValue["issueWarning"]>(
+    (username, reason, issuedBy) => {
+      const trimmedReason = reason.trim();
+      if (!trimmedReason) {
+        toast.error("Provide a reason for the warning");
+        return false;
+      }
+      const target = findCreatorByUsername(username);
+      if (!target) {
+        toast.error("Account not found");
+        return false;
+      }
+
+      const warning: CreatorWarning = {
+        id: createId(),
+        reason: trimmedReason,
+        issuedAt: new Date().toISOString(),
+        issuedBy,
+      };
+
+      setCreators((prev) =>
+        prev.map((creator) =>
+          creator.id === target.id
+            ? {
+                ...creator,
+                warnings: [...creator.warnings, warning],
+              }
+            : creator,
+        ),
+      );
+
+      toast.success(`Warning issued to @${target.username}`);
+      return true;
+    },
+    [findCreatorByUsername],
+  );
+
+  const banAccount = useCallback<UserContextValue["banAccount"]>(
+    (username, reason, bannedUntil = null, issuedBy) => {
+      const target = findCreatorByUsername(username);
+      if (!target) {
+        toast.error("Account not found");
+        return false;
+      }
+
+      setCreators((prev) =>
+        prev.map((creator) =>
+          creator.id === target.id
+            ? {
+                ...creator,
+                banInfo: {
+                  isBanned: true,
+                  reason,
+                  bannedUntil,
+                  issuedAt: new Date().toISOString(),
+                  issuedBy,
+                },
+              }
+            : creator,
+        ),
+      );
+
+      toast.success(`@${target.username} has been banned${bannedUntil ? " until " + new Date(bannedUntil).toLocaleDateString() : ""}`);
+      return true;
+    },
+    [findCreatorByUsername],
+  );
+
+  const unbanAccount = useCallback<UserContextValue["unbanAccount"]>(
+    (username) => {
+      const target = findCreatorByUsername(username);
+      if (!target) {
+        toast.error("Account not found");
+        return false;
+      }
+
+      setCreators((prev) =>
+        prev.map((creator) =>
+          creator.id === target.id
+            ? {
+                ...creator,
+                banInfo: { isBanned: false },
+              }
+            : creator,
+        ),
+      );
+
+      toast.success(`@${target.username} is no longer banned`);
+      return true;
+    },
+    [findCreatorByUsername],
+  );
+
+  const deleteVideo = useCallback<UserContextValue["deleteVideo"]>(
+    (username, videoId) => {
+      const target = findCreatorByUsername(username);
+      if (!target) {
+        toast.error("Account not found");
+        return false;
+      }
+
+      const hasVideo = target.videos.some((video) => video.id === videoId);
+      if (!hasVideo) {
+        toast.error("Video not found");
+        return false;
+      }
+
+      setCreators((prev) =>
+        prev.map((creator) => {
+          if (creator.id !== target.id) {
+            return creator;
+          }
+
+          const remainingVideos = creator.videos.filter((video) => video.id !== videoId);
+          return {
+            ...creator,
+            videos: remainingVideos,
+            pinnedVideoIds: creator.pinnedVideoIds.filter((id) => id !== videoId),
+            stats: {
+              ...creator.stats,
+              videos: Math.max(0, remainingVideos.length),
+            },
+          };
+        }),
+      );
+
+      toast.success("Video deleted");
+      return true;
+    },
+    [findCreatorByUsername],
+  );
+
+  const banVideo = useCallback<UserContextValue["banVideo"]>(
+    (username, videoId, reason, bannedUntil = null, issuedBy) => {
+      const target = findCreatorByUsername(username);
+      if (!target) {
+        toast.error("Account not found");
+        return false;
+      }
+
+      const hasVideo = target.videos.some((video) => video.id === videoId);
+      if (!hasVideo) {
+        toast.error("Video not found");
+        return false;
+      }
+
+      setCreators((prev) =>
+        prev.map((creator) => {
+          if (creator.id !== target.id) {
+            return creator;
+          }
+
+          const updatedVideos = creator.videos.map((video) =>
+            video.id === videoId
+              ? {
+                  ...video,
+                  banInfo: {
+                    isBanned: true,
+                    reason,
+                    bannedUntil,
+                    issuedAt: new Date().toISOString(),
+                    issuedBy,
+                  },
+                }
+              : video,
+          );
+
+          return {
+            ...creator,
+            videos: updatedVideos,
+          };
+        }),
+      );
+
+      toast.success("Video banned");
+      return true;
+    },
+    [findCreatorByUsername],
+  );
+
+  const unbanVideo = useCallback<UserContextValue["unbanVideo"]>(
+    (username, videoId) => {
+      const target = findCreatorByUsername(username);
+      if (!target) {
+        toast.error("Account not found");
+        return false;
+      }
+
+      const hasVideo = target.videos.some((video) => video.id === videoId);
+      if (!hasVideo) {
+        toast.error("Video not found");
+        return false;
+      }
+
+      setCreators((prev) =>
+        prev.map((creator) => {
+          if (creator.id !== target.id) {
+            return creator;
+          }
+
+          const updatedVideos = creator.videos.map((video) =>
+            video.id === videoId
+              ? {
+                  ...video,
+                  banInfo: { isBanned: false },
+                }
+              : video,
+          );
+
+          return {
+            ...creator,
+            videos: updatedVideos,
+          };
+        }),
+      );
+
+      toast.success("Video unbanned");
+      return true;
+    },
+    [findCreatorByUsername],
+  );
+
   const value = useMemo<UserContextValue>(
     () => ({
       currentUser,
@@ -715,6 +1032,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       findCreatorById,
       deleteCreatorById,
       deleteCreatorByUsername,
+      issueWarning,
+      banAccount,
+      unbanAccount,
+      deleteVideo,
+      banVideo,
+      unbanVideo,
     }),
     [
       currentUser,
@@ -732,6 +1055,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       findCreatorById,
       deleteCreatorById,
       deleteCreatorByUsername,
+      issueWarning,
+      banAccount,
+      unbanAccount,
+      deleteVideo,
+      banVideo,
+      unbanVideo,
     ],
   );
 

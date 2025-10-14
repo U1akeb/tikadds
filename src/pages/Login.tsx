@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 
 const Login = () => {
@@ -11,6 +12,13 @@ const Login = () => {
   const [email, setEmail] = useState(authUser?.email ?? "");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGooglePickerOpen, setIsGooglePickerOpen] = useState(false);
+
+  const googleAccounts = [
+    "creativepro@gmail.com",
+    "brandmaster.agency@gmail.com",
+    "adgenius.creator@gmail.com",
+  ];
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -23,8 +31,20 @@ const Login = () => {
   };
 
   const handleProvider = (provider: "google" | "facebook") => {
+    if (provider === "google") {
+      setIsGooglePickerOpen(true);
+      return;
+    }
     const success = loginWithProvider(provider);
     if (success) {
+      navigate("/profile");
+    }
+  };
+
+  const handleGoogleSelection = (accountEmail: string) => {
+    const success = loginWithProvider("google", accountEmail);
+    if (success) {
+      setIsGooglePickerOpen(false);
       navigate("/profile");
     }
   };
@@ -91,6 +111,34 @@ const Login = () => {
           </p>
         </CardContent>
       </Card>
+
+      <Dialog open={isGooglePickerOpen} onOpenChange={setIsGooglePickerOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Select a Google account</DialogTitle>
+            <DialogDescription>Choose the Google account to continue with.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {googleAccounts.map((account) => (
+              <Button
+                key={account}
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => handleGoogleSelection(account)}
+              >
+                {account}
+              </Button>
+            ))}
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => handleGoogleSelection("google@demo.adspark.dev")}
+            >
+              Use a different account
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

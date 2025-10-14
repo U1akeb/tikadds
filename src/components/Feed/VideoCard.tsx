@@ -16,6 +16,7 @@ interface VideoCardProps {
   onCommentClick: (videoId: string) => void;
   onProfileClick: () => void;
   creator: CreatorProfile;
+  dataVideoId?: string;
 }
 
 export function VideoCard({
@@ -29,6 +30,7 @@ export function VideoCard({
   onCommentClick,
   onProfileClick,
   creator,
+  dataVideoId,
 }: VideoCardProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(likes);
@@ -88,7 +90,10 @@ export function VideoCard({
   };
 
   return (
-    <div className="relative h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always md:h-screen md:min-h-0">
+    <div
+      className="relative h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always md:h-screen md:min-h-0"
+      data-video-id={dataVideoId ?? id}
+    >
       <div className="absolute inset-0 bg-card" onDoubleClick={handleDoubleClick}>
         <video
           className="h-full w-full object-cover"

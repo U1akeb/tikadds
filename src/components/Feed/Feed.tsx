@@ -60,8 +60,10 @@ export function Feed() {
   const [videos, setVideos] = useState<VideoItem[]>(baseVideos);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [selectedCreator, setSelectedCreator] = useState<string | null>(null);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(baseVideos[0]?.id ?? null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isLoadingMoreRef = useRef(false);
+  const activeVideoRef = useRef<string | null>(baseVideos[0]?.id ?? null);
   const isMobile = useIsMobile();
   const commentsOpen = selectedVideo !== null;
 
@@ -73,14 +75,25 @@ export function Feed() {
   }, [creators]);
 
   useEffect(() => {
+    activeVideoRef.current = activeVideoId;
+  }, [activeVideoId]);
+
+  useEffect(() => {
+    if (!activeVideoId && videos.length > 0) {
+      setActiveVideoId(videos[0].id);
+      activeVideoRef.current = videos[0].id;
+    }
+  }, [videos, activeVideoId]);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleScroll = () => {
-      if (!containerRef.current || isLoadingMoreRef.current) return;
+      if (!containerRef.current) return;
 
       const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-      if (scrollTop + clientHeight >= scrollHeight - 200) {
+      if (!isLoadingMoreRef.current && scrollTop + clientHeight >= scrollHeight - 200) {
         isLoadingMoreRef.current = true;
         setTimeout(() => {
           setVideos((prev) => {
@@ -100,9 +113,32 @@ export function Feed() {
           isLoadingMoreRef.current = false;
         }, 400);
       }
+
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const containerCenter = containerRect.top + containerRect.height / 2;
+      const candidates = Array.from(
+        containerRef.current.querySelectorAll<HTMLDivElement>("[data-video-id]"),
+      );
+      let closestId: string | null = null;
+      let minDistance = Number.POSITIVE_INFINITY;
+      candidates.forEach((element) => {
+        const rect = element.getBoundingClientRect();
+        const elementCenter = rect.top + rect.height / 2;
+        const distance = Math.abs(elementCenter - containerCenter);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestId = element.dataset.videoId ?? null;
+        }
+      });
+
+      if (closestId && closestId !== activeVideoRef.current) {
+        activeVideoRef.current = closestId;
+        setActiveVideoId(closestId);
+      }
     };
 
     container.addEventListener("scroll", handleScroll);
+    handleScroll();
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
@@ -111,8 +147,21 @@ export function Feed() {
   };
 
   const toggleComments = (videoId: string) => {
-    setSelectedVideo((current) => (current === videoId ? null : videoId));
+    setSelectedVideo((current) => {
+      const next = current === videoId ? null : videoId;
+      if (next) {
+        setActiveVideoId(next);
+      }
+      return next;
+    });
   };
+
+  useEffect(() => {
+    if (!commentsOpen) return;
+    if (activeVideoId && selectedVideo !== activeVideoId) {
+      setSelectedVideo(activeVideoId);
+    }
+  }, [commentsOpen, activeVideoId, selectedVideo]);
 
   const handleCommentProfileNavigate = (username: string) => {
     const creator = findCreatorByUsername(username);
@@ -138,6 +187,18 @@ export function Feed() {
             const creator = creatorLookup[video.creatorId];
             if (!creator) return null;
 
+            if (creator.banInfo?.isBanned) {
+              return (
+                <div
+                  key={video.id}
+                  data-video-id={video.id}
+                  className="relative flex h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always items-center justify-center bg-background/90 text-center text-sm text-muted-foreground md:h-screen md:min-h-0"
+                >
+                  Creator content is unavailable.
+                </div>
+              );
+            }
+
             return (
               <VideoCard
                 key={video.id}
@@ -145,6 +206,7 @@ export function Feed() {
                 creator={creator}
                 onCommentClick={toggleComments}
                 onProfileClick={() => handleProfileOpen(video.creatorId)}
+                dataVideoId={video.id}
               />
             );
           })}
