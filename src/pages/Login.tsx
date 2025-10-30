@@ -7,11 +7,12 @@ import { useAuth } from "@/context/AuthContext";
 
 const Login = () => {
   const navigate = useNavigate();
-  const { loginWithEmail, loginWithProvider, authUser } = useAuth();
+  const { loginWithEmail, loginWithProvider, authUser, continueAsGuest } = useAuth();
   const [email, setEmail] = useState(authUser?.email ?? "");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProviderLoading, setIsProviderLoading] = useState(false);
+  const [isGuestLoading, setIsGuestLoading] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -29,6 +30,16 @@ const Login = () => {
     setIsProviderLoading(false);
     if (success) {
       navigate("/profile");
+    }
+  };
+
+  const handleGuest = async () => {
+    setIsGuestLoading(true);
+    try {
+      await continueAsGuest();
+      navigate("/");
+    } finally {
+      setIsGuestLoading(false);
     }
   };
 
@@ -85,6 +96,15 @@ const Login = () => {
               </Button>
             </div>
           </div>
+
+          <Button
+            variant="ghost"
+            className="w-full"
+            onClick={handleGuest}
+            disabled={isGuestLoading}
+          >
+            {isGuestLoading ? "Preparing guest session..." : "Continue as guest"}
+          </Button>
 
           <p className="text-center text-sm text-muted-foreground">
             Need an account?{" "}

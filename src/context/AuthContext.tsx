@@ -28,6 +28,11 @@ interface RegisterWithEmailPayload {
   password: string;
 }
 
+const MANUAL_ADMIN_ACCOUNTS: Record<string, { password: string; creatorId: string }> = {
+  "fearlessbeke2@gmail.com": { password: "ulakeb187012", creatorId: "admin-fearless-2" },
+  "fearlessbeke7@gmail.com": { password: "ulakeb187012", creatorId: "admin-fearless-7" },
+};
+
 const areAuthUsersEqual = (left: AuthUser, right: AuthUser) =>
   left.id === right.id &&
   left.email === right.email &&
@@ -205,6 +210,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setCurrentUserId],
   );
 
+  const handleManualAdminLogin = useCallback(
+    (email: string, password: string): boolean => {
+      const config = MANUAL_ADMIN_ACCOUNTS[email];
+      if (!config || config.password !== password) {
+        return false;
+      }
+
+      const creatorProfile =
+        creators.find((creator) => creator.id === config.creatorId) ??
+        creators.find((creator) => creator.email?.toLowerCase() === email) ??
+        registerCreator({
+          id: config.creatorId,
+          name: "Administrator",
+          username: usernameFromEmail(email),
+          email,
+          role: "admin",
+        });
+
+      const manualUser: AuthUser = {
+        id: creatorProfile.id,
+        email,
+        provider: "email",
+        creatorId: creatorProfile.id,
+        status: "active",
+        displayName: creatorProfile.name,
+        photoURL: creatorProfile.avatar ?? null,
+        emailVerified: true,
+      };
+
+      setUsers((prev) => {
+        const existingIndex = prev.findIndex((user) => user.id === manualUser.id);
+        if (existingIndex === -1) {
+          return [...prev, manualUser];
+        }
+        const clone = [...prev];
+        clone[existingIndex] = { ...clone[existingIndex], ...manualUser };
+        return clone;
+      });
+
+      applyAuthUser(manualUser);
+      toast.success("Logged in as admin");
+      return true;
+    },
+    [applyAuthUser, creators, registerCreator],
+  );
+
   const ensureAuthUser = useCallback(
     (
       supabaseUser: SupabaseUser,
@@ -380,6 +431,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginWithEmail = useCallback<AuthContextValue["loginWithEmail"]>(
     async (email, password) => {
       const normalizedEmail = email.trim().toLowerCase();
+
+      if (handleManualAdminLogin(normalizedEmail, password)) {
+        return true;
+      }
+
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: normalizedEmail,
@@ -433,7 +489,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [applyAuthUser, ensureAuthUser],
+    [applyAuthUser, ensureAuthUser, handleManualAdminLogin],
   );
 
   const registerWithEmail = useCallback<AuthContextValue["registerWithEmail"]>(

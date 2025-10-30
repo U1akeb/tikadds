@@ -8,7 +8,7 @@ import { toast } from "sonner";
 
 const Register = () => {
   const navigate = useNavigate();
-  const { registerWithEmail, loginWithProvider } = useAuth();
+  const { registerWithEmail, loginWithProvider, continueAsGuest } = useAuth();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -17,6 +17,7 @@ const Register = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProviderLoading, setIsProviderLoading] = useState(false);
   const [verificationNotice, setVerificationNotice] = useState<string | null>(null);
+  const [isGuestLoading, setIsGuestLoading] = useState(false);
 
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -46,6 +47,16 @@ const Register = () => {
     setIsProviderLoading(false);
     if (success) {
       navigate("/profile");
+    }
+  };
+
+  const handleGuest = async () => {
+    setIsGuestLoading(true);
+    try {
+      await continueAsGuest();
+      navigate("/");
+    } finally {
+      setIsGuestLoading(false);
     }
   };
 
@@ -175,6 +186,15 @@ const Register = () => {
               </Button>
             </div>
           </div>
+
+          <Button
+            variant="ghost"
+            className="w-full"
+            onClick={handleGuest}
+            disabled={isGuestLoading || Boolean(verificationNotice)}
+          >
+            {isGuestLoading ? "Preparing guest session..." : "Continue as guest"}
+          </Button>
 
           <p className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}

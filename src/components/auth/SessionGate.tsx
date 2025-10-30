@@ -17,6 +17,12 @@ export function SessionGate() {
   const shouldShow = sessionMode === "none" && !dismissed && !isSuppressed;
 
   useEffect(() => {
+    if (sessionMode === "none" && !isSuppressed) {
+      navigate("/login", { replace: true });
+    }
+  }, [sessionMode, isSuppressed, navigate]);
+
+  useEffect(() => {
     if (sessionMode !== "none") {
       setDismissed(true);
     }
