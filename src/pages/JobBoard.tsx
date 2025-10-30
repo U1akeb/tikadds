@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Share2,
   Users,
+  Search as SearchIcon,
 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar/Sidebar";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ import { useJobs, JobPosting } from "@/context/JobContext";
 import { formatDistanceToNow } from "date-fns";
 import { useUser } from "@/context/UserContext";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { useSearch } from "@/context/SearchContext";
 
 type SortOption =
   | "performance"
@@ -46,12 +49,14 @@ const SORT_LABELS: Record<SortOption, string> = {
 export default function JobBoard() {
   const { jobs } = useJobs();
   const { currentUser } = useUser();
+  const { input, setInput, submit, activeQuery, clear } = useSearch();
   const [sort, setSort] = useState<SortOption>("performance");
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const highlightId = searchParams.get("highlight");
+  const normalizedQuery = activeQuery.trim().toLowerCase();
 
   const sortedJobs = useMemo(() => {
     const cloned = [...jobs];
@@ -84,6 +89,33 @@ export default function JobBoard() {
     return cloned;
   }, [jobs, sort]);
 
+  const filteredJobs = useMemo(() => {
+    if (!normalizedQuery) {
+      return sortedJobs;
+    }
+    return sortedJobs.filter((job) => {
+      const haystack = [
+        job.title,
+        job.description,
+        job.requesterName,
+        job.requesterRole,
+        ...job.tags,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [sortedJobs, normalizedQuery]);
+
+  const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submit();
+  };
+
+  const handleClearSearch = () => {
+    clear();
+  };
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -97,7 +129,37 @@ export default function JobBoard() {
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end md:gap-4">
+              <form
+                className="relative w-full md:w-64"
+                onSubmit={handleSearchSubmit}
+                role="search"
+              >
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  placeholder="Search jobs"
+                  className="w-full rounded-full bg-background/70 pl-9 pr-9 text-sm"
+                />
+                {normalizedQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-8 top-1/2 -translate-y-1/2 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  aria-label="Search job board"
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm"
+                >
+                  <SearchIcon className="h-3.5 w-3.5" />
+                </button>
+              </form>
+
               <Select value={sort} onValueChange={(value) => setSort(value as SortOption)}>
                 <SelectTrigger className="w-full md:w-48">
                   <Filter className="mr-2 h-4 w-4" />
@@ -121,14 +183,24 @@ export default function JobBoard() {
           </header>
 
           <section className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-            {sortedJobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                onSelect={setSelectedJob}
-                isHighlighted={highlightId === job.id}
-              />
-            ))}
+            {filteredJobs.length === 0 ? (
+              <div className="col-span-full flex h-40 flex-col items-center justify-center gap-2 rounded-2xl border border-border/60 bg-muted/10 text-center text-sm text-muted-foreground">
+                <SearchIcon className="h-6 w-6" />
+                No jobs match “{activeQuery}”. Try another search term.
+                <Button variant="ghost" size="sm" onClick={handleClearSearch}>
+                  Reset search
+                </Button>
+              </div>
+            ) : (
+              filteredJobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  onSelect={setSelectedJob}
+                  isHighlighted={highlightId === job.id}
+                />
+              ))
+            )}
           </section>
         </div>
       </main>

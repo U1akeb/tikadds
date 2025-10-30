@@ -63,6 +63,18 @@ export interface CreatorProfile {
   lastProfileUpdate?: string;
   warnings: CreatorWarning[];
   banInfo: AccountBanInfo;
+  onboardingCompleted: boolean;
+  creatorCategories?: string[];
+  advertiserCategories?: string[];
+  paymentInfo: PaymentInfo;
+}
+
+export interface PaymentInfo {
+  method: string;
+  payoutEmail?: string;
+  accountHolder?: string;
+  accountNumber?: string;
+  status: "not_set" | "pending" | "verified";
 }
 
 export type CurrentUser = CreatorProfile;
@@ -102,6 +114,8 @@ interface UserContextValue {
   deleteVideo: (username: string, videoId: string) => boolean;
   banVideo: (username: string, videoId: string, reason: string, bannedUntil?: string | null, issuedBy?: string) => boolean;
   unbanVideo: (username: string, videoId: string) => boolean;
+  completeOnboarding: (payload: { role: Exclude<UserRole, "admin">; categories: string[] }) => void;
+  updatePaymentInfo: (info: Partial<PaymentInfo>) => void;
 }
 
 const CREATORS_STORAGE_KEY = "adspark-creators";
@@ -110,6 +124,19 @@ const CURRENT_USER_STORAGE_KEY = "adspark-current-user";
 
 const seedProfileUpdatedAt = new Date().toISOString();
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+const DEFAULT_PAYMENT_INFO: PaymentInfo = {
+  method: "unset",
+  status: "not_set",
+};
+
+const clonePaymentInfo = (info?: PaymentInfo): PaymentInfo => ({
+  method: info?.method ?? DEFAULT_PAYMENT_INFO.method,
+  payoutEmail: info?.payoutEmail ?? undefined,
+  accountHolder: info?.accountHolder ?? undefined,
+  accountNumber: info?.accountNumber ?? undefined,
+  status: info?.status ?? DEFAULT_PAYMENT_INFO.status,
+});
 
 const creatorsSeed: CreatorProfile[] = [
   {
@@ -167,6 +194,15 @@ const creatorsSeed: CreatorProfile[] = [
     lastProfileUpdate: seedProfileUpdatedAt,
     warnings: [],
     banInfo: { isBanned: false },
+    onboardingCompleted: true,
+    creatorCategories: ["Lifestyle", "Product", "Beauty"],
+    advertiserCategories: [],
+    paymentInfo: {
+      method: "paypal",
+      payoutEmail: "payments@creativepro.studio",
+      accountHolder: "Creative Pro Studio",
+      status: "verified",
+    },
   },
   {
     id: "brand-master",
@@ -190,6 +226,10 @@ const creatorsSeed: CreatorProfile[] = [
     lastProfileUpdate: seedProfileUpdatedAt,
     warnings: [],
     banInfo: { isBanned: false },
+    onboardingCompleted: true,
+    creatorCategories: [],
+    advertiserCategories: ["Lifestyle Brands", "Fashion", "Campaign Strategy"],
+    paymentInfo: clonePaymentInfo(),
   },
   {
     id: "ad-genius",
@@ -234,6 +274,15 @@ const creatorsSeed: CreatorProfile[] = [
     lastProfileUpdate: seedProfileUpdatedAt,
     warnings: [],
     banInfo: { isBanned: false },
+    onboardingCompleted: true,
+    creatorCategories: ["Tech", "Product Reviews", "Behind the Scenes"],
+    advertiserCategories: [],
+    paymentInfo: {
+      method: "bank_transfer",
+      accountHolder: "Ad Genius LLC",
+      accountNumber: "****2210",
+      status: "verified",
+    },
   },
   {
     id: "admin-fearless-2",
@@ -259,6 +308,10 @@ const creatorsSeed: CreatorProfile[] = [
     lastProfileUpdate: seedProfileUpdatedAt,
     warnings: [],
     banInfo: { isBanned: false },
+    onboardingCompleted: true,
+    creatorCategories: [],
+    advertiserCategories: [],
+    paymentInfo: clonePaymentInfo(),
   },
   {
     id: "admin-fearless-7",
@@ -284,6 +337,10 @@ const creatorsSeed: CreatorProfile[] = [
     lastProfileUpdate: seedProfileUpdatedAt,
     warnings: [],
     banInfo: { isBanned: false },
+    onboardingCompleted: true,
+    creatorCategories: [],
+    advertiserCategories: [],
+    paymentInfo: clonePaymentInfo(),
   },
   {
     id: "spotlight-brand",
@@ -307,6 +364,10 @@ const creatorsSeed: CreatorProfile[] = [
     lastProfileUpdate: seedProfileUpdatedAt,
     warnings: [],
     banInfo: { isBanned: false },
+    onboardingCompleted: true,
+    creatorCategories: [],
+    advertiserCategories: ["Trend Scouting", "Food & Beverage", "Lifestyle"],
+    paymentInfo: clonePaymentInfo(),
   },
 ];
 
@@ -394,6 +455,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }));
     const banInfo = normalizeAccountBan(creator.banInfo);
     const warnings = Array.isArray(creator.warnings) ? creator.warnings : [];
+    const creatorCategories = Array.isArray(creator.creatorCategories) ? creator.creatorCategories : [];
+    const advertiserCategories = Array.isArray(creator.advertiserCategories)
+      ? creator.advertiserCategories
+      : [];
+    const paymentInfo = clonePaymentInfo(creator.paymentInfo);
     return {
       ...creator,
       role: safeRole,
@@ -417,6 +483,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
       videos: normalizedVideos,
       warnings,
       banInfo,
+      onboardingCompleted: creator.onboardingCompleted ?? true,
+      creatorCategories,
+      advertiserCategories,
+      paymentInfo,
     };
   };
 
@@ -573,6 +643,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
             lastProfileUpdate: existing?.lastProfileUpdate ?? new Date().toISOString(),
             warnings: existing?.warnings ?? [],
             banInfo: existing?.banInfo ?? { isBanned: false },
+            onboardingCompleted: existing?.onboardingCompleted ?? true,
+            creatorCategories: existing?.creatorCategories ?? [],
+            advertiserCategories: existing?.advertiserCategories ?? [],
+            paymentInfo: clonePaymentInfo(existing?.paymentInfo),
           };
 
           byId.set(updated.id, updated);
@@ -668,6 +742,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
                     earnings: creator.stats.earnings,
                     pendingEarnings: creator.stats.pendingEarnings,
                   },
+            creatorCategories: enforcedRole === "creator" ? creator.creatorCategories ?? [] : [],
+            advertiserCategories:
+              enforcedRole === "advertiser" ? creator.advertiserCategories ?? [] : [],
           };
         }),
       );
@@ -800,6 +877,80 @@ export function UserProvider({ children }: { children: ReactNode }) {
     );
   }, [currentUserId]);
 
+  const completeOnboarding = useCallback<UserContextValue["completeOnboarding"]>(
+    ({ role, categories }) => {
+      const normalizedRole: Exclude<UserRole, "admin"> = role;
+      const uniqueCategories = Array.from(
+        new Set(categories.map((item) => item.trim()).filter((item) => item.length > 0)),
+      );
+      const focusValue = uniqueCategories.join(", ");
+
+      setCreators((prev) =>
+        prev.map((creator) => {
+          if (creator.id !== currentUserId) {
+            return creator;
+          }
+
+          const nextStats =
+            normalizedRole === "creator"
+              ? { ...creator.stats, jobsPosted: creator.stats.jobsPosted ?? 0 }
+              : {
+                  ...creator.stats,
+                  earnings: creator.stats.earnings,
+                  pendingEarnings: creator.stats.pendingEarnings,
+                };
+
+          return {
+            ...creator,
+            role: normalizedRole,
+            focus: focusValue || creator.focus,
+            onboardingCompleted: true,
+            creatorCategories: normalizedRole === "creator" ? uniqueCategories : [],
+            advertiserCategories: normalizedRole === "advertiser" ? uniqueCategories : [],
+            stats: nextStats,
+          };
+        }),
+      );
+
+      void (async () => {
+        const updates: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+          focus: focusValue || null,
+          role: normalizedRole,
+        };
+        const { error } = await supabase.from("users").update(updates).eq("id", currentUserId);
+        if (error) {
+          console.error("Failed to sync onboarding choices", error);
+        }
+      })();
+    },
+    [currentUserId],
+  );
+
+  const updatePaymentInfo = useCallback<UserContextValue["updatePaymentInfo"]>(
+    (info) => {
+      setCreators((prev) =>
+        prev.map((creator) => {
+          if (creator.id !== currentUserId) {
+            return creator;
+          }
+          const existing = clonePaymentInfo(creator.paymentInfo);
+          const merged: PaymentInfo = {
+            ...existing,
+            ...info,
+            status: info?.status ?? existing.status,
+            method: info?.method ?? existing.method,
+          };
+          return {
+            ...creator,
+            paymentInfo: merged,
+          };
+        }),
+      );
+    },
+    [currentUserId],
+  );
+
   const registerCreator = useCallback<UserContextValue["registerCreator"]>((payload) => {
     const id = payload.id ?? createId();
     const requestedRole = payload.role ?? "creator";
@@ -850,6 +1001,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
       lastProfileUpdate: new Date().toISOString(),
       warnings: [],
       banInfo: { isBanned: false },
+      onboardingCompleted: false,
+      creatorCategories: enforcedRole === "creator" ? [] : [],
+      advertiserCategories: enforcedRole === "advertiser" ? [] : [],
+      paymentInfo: clonePaymentInfo(),
     };
 
     setCreators((prev) => {
@@ -1273,6 +1428,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       deleteVideo,
       banVideo,
       unbanVideo,
+      completeOnboarding,
+      updatePaymentInfo,
     }),
     [
       currentUser,
@@ -1296,6 +1453,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       deleteVideo,
       banVideo,
       unbanVideo,
+      completeOnboarding,
+      updatePaymentInfo,
     ],
   );
 

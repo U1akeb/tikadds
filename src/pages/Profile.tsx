@@ -106,6 +106,11 @@ export default function Profile() {
     }
     return BASE_ROLE_OPTIONS;
   }, [isAdmin]);
+  const paymentInfo = profileUser.paymentInfo;
+  const canViewPaymentStatus = profileUser.role === "creator" && (isOwnProfile || currentUser.role === "advertiser");
+  const maskedAccountNumber = paymentInfo.accountNumber
+    ? paymentInfo.accountNumber.replace(/.(?=.{4})/g, "*")
+    : undefined;
 
   const handleFollowToggle = () => {
     if (!authUser) {
@@ -239,6 +244,74 @@ export default function Profile() {
             followersCount={followersCount}
             followingCount={followingCount}
           />
+
+          {canViewPaymentStatus && (
+            <Card className="border-border/60">
+              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-lg font-semibold">Payout readiness</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    {isOwnProfile
+                      ? "Keep your payout details up to date so brands can release payments on time."
+                      : "We verify creator payout details before releasing funds for your campaigns."}
+                  </p>
+                </div>
+                <Badge variant={paymentInfo.status === "verified" ? "default" : "outline"} className="capitalize">
+                  {paymentInfo.status.replace("_", " ")}
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {paymentInfo.method !== "unset" ? (
+                  <div className="grid gap-3 text-sm md:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Payout method</p>
+                      <p className="mt-1 font-medium capitalize">
+                        {paymentInfo.method === "bank_transfer"
+                          ? "Bank transfer"
+                          : paymentInfo.method === "wire"
+                            ? "Wire transfer"
+                            : paymentInfo.method}
+                      </p>
+                      {isOwnProfile && paymentInfo.payoutEmail && (
+                        <p className="text-xs text-muted-foreground">{paymentInfo.payoutEmail}</p>
+                      )}
+                    </div>
+                    {isOwnProfile ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Account details</p>
+                        <p className="mt-1 font-medium">
+                          {paymentInfo.accountHolder ?? "Not provided"}
+                        </p>
+                        {maskedAccountNumber && (
+                          <p className="text-xs text-muted-foreground">{maskedAccountNumber}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Payment status</p>
+                        <p className="mt-1 font-medium capitalize">{paymentInfo.status.replace("_", " ")}</p>
+                        <p className="text-xs text-muted-foreground">
+                          We release funds once the creator’s payout info is verified.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    This creator hasn’t provided payout details yet.
+                  </p>
+                )}
+
+                {isOwnProfile ? (
+                  <Button variant="outline" className="mt-2" onClick={() => navigate("/settings")}>Manage payout info</Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Payment status is visible to advertisers tied to posted jobs and approved submissions.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Tabs defaultValue={isCreator ? "videos" : "jobs"}>
             <TabsList className="mb-4">

@@ -9,8 +9,9 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
 import { useUser } from "@/context/UserContext";
+import type { PaymentInfo } from "@/context/UserContext";
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck, Bell, Palette, LogOut, Trash2 } from "lucide-react";
+import { ShieldCheck, Bell, Palette, LogOut, Trash2, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 
 const SETTINGS_STORAGE_KEY = "adspark-user-settings";
@@ -40,6 +41,7 @@ export default function Settings() {
     unbanAccountByCreatorId,
   } = useAuth();
   const {
+    currentUser,
     deleteCreatorByUsername,
     issueWarning,
     banAccount,
@@ -48,6 +50,7 @@ export default function Settings() {
     banVideo,
     unbanVideo,
     findCreatorByUsername,
+    updatePaymentInfo,
   } = useUser();
   const navigate = useNavigate();
   const [preferences, setPreferences] = useState<Preferences>(() => {
@@ -97,6 +100,18 @@ export default function Settings() {
   const [videoBanDuration, setVideoBanDuration] = useState("permanent");
   const [videoUnbanUsername, setVideoUnbanUsername] = useState("");
   const [videoUnbanId, setVideoUnbanId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<string>(() =>
+    currentUser.paymentInfo.method === "unset" ? "" : currentUser.paymentInfo.method,
+  );
+  const [paymentEmail, setPaymentEmail] = useState<string>(currentUser.paymentInfo.payoutEmail ?? "");
+  const [paymentAccountHolder, setPaymentAccountHolder] = useState<string>(
+    currentUser.paymentInfo.accountHolder ?? "",
+  );
+  const [paymentAccountNumber, setPaymentAccountNumber] = useState<string>(
+    currentUser.paymentInfo.accountNumber ?? "",
+  );
+  const [paymentStatus, setPaymentStatus] = useState<PaymentInfo["status"]>(currentUser.paymentInfo.status);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -104,6 +119,14 @@ export default function Settings() {
     }
     window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(preferences));
   }, [preferences]);
+
+  useEffect(() => {
+    setPaymentMethod(currentUser.paymentInfo.method === "unset" ? "" : currentUser.paymentInfo.method);
+    setPaymentEmail(currentUser.paymentInfo.payoutEmail ?? "");
+    setPaymentAccountHolder(currentUser.paymentInfo.accountHolder ?? "");
+    setPaymentAccountNumber(currentUser.paymentInfo.accountNumber ?? "");
+    setPaymentStatus(currentUser.paymentInfo.status);
+  }, [currentUser]);
 
   const handlePreferenceToggle = (key: keyof Preferences) => {
     setPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -268,6 +291,38 @@ export default function Settings() {
     }
   };
 
+  const handleSavePayment = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (currentUser.role !== "creator") {
+      toast.error("Payment details are available for creators only");
+      return;
+    }
+
+    if (!paymentMethod) {
+      toast.error("Select a payout method");
+      return;
+    }
+
+    if (paymentMethod === "paypal" && !paymentEmail.trim()) {
+      toast.error("Add the PayPal email you want to receive payouts with");
+      return;
+    }
+
+    setIsSavingPayment(true);
+    try {
+      updatePaymentInfo({
+        method: paymentMethod,
+        payoutEmail: paymentEmail.trim() || undefined,
+        accountHolder: paymentAccountHolder.trim() || undefined,
+        accountNumber: paymentAccountNumber.trim() || undefined,
+        status: paymentStatus,
+      });
+      toast.success("Payment details saved");
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
   const accountInfo = useMemo(() => {
     if (!authUser) {
       return null;
@@ -341,6 +396,106 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+
+          {currentUser.role === "creator" && (
+            <Card className="border-border/60">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <CreditCard className="h-5 w-5 text-primary" />
+                  <div>
+                    <CardTitle>Payout preferences</CardTitle>
+                    <CardDescription>Share how you’d like to receive payments for sponsored work.</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <form className="grid gap-6" onSubmit={handleSavePayment}>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="payment-method">
+                        Payout method
+                      </label>
+                      <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                        <SelectTrigger id="payment-method" className="border-border/60">
+                          <SelectValue placeholder="Select a method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="paypal">PayPal</SelectItem>
+                          <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                          <SelectItem value="wire">Wire transfer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="payment-status">
+                        Verification status
+                      </label>
+                      <Select value={paymentStatus} onValueChange={(value) => setPaymentStatus(value as PaymentInfo["status"])}>
+                        <SelectTrigger id="payment-status" className="border-border/60">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="not_set">Not provided</SelectItem>
+                          <SelectItem value="pending">Pending verification</SelectItem>
+                          <SelectItem value="verified">Verified</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="payment-email">
+                        Payout email
+                      </label>
+                      <Input
+                        id="payment-email"
+                        placeholder="payments@yourbrand.com"
+                        value={paymentEmail}
+                        onChange={(event) => setPaymentEmail(event.target.value)}
+                        className="border-border/60"
+                        type="email"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="account-holder">
+                        Account holder name
+                      </label>
+                      <Input
+                        id="account-holder"
+                        placeholder="Name on account"
+                        value={paymentAccountHolder}
+                        onChange={(event) => setPaymentAccountHolder(event.target.value)}
+                        className="border-border/60"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="account-number">
+                      Account number / IBAN (bank transfers)
+                    </label>
+                    <Input
+                      id="account-number"
+                      placeholder="**** **** ****"
+                      value={paymentAccountNumber}
+                      onChange={(event) => setPaymentAccountNumber(event.target.value)}
+                      className="border-border/60"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button type="submit" className="gradient-primary text-white" disabled={isSavingPayment}>
+                      {isSavingPayment ? "Saving..." : "Save payment details"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      We only share your payment status with advertisers you work with.
+                    </p>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="border-border/60">
             <CardHeader>

@@ -16,7 +16,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Settings from "./pages/Settings";
 import { SessionGate } from "@/components/auth/SessionGate";
-import Search from "./pages/Search";
+import { SearchProvider } from "./context/SearchContext";
+import { OnboardingDialog } from "@/components/onboarding/OnboardingDialog";
 
 const queryClient = new QueryClient();
 
@@ -24,27 +25,29 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <UserProvider>
       <AuthProvider>
-        <JobProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <SessionGate />
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/upload" element={<Upload />} />
-                <Route path="/jobs" element={<JobBoard />} />
-                <Route path="/create-job" element={<CreateJob />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/search" element={<Search />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
-        </JobProvider>
+        <BrowserRouter>
+          <SearchProvider>
+            <JobProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <SessionGate />
+                <OnboardingDialog />
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/upload" element={<Upload />} />
+                  <Route path="/jobs" element={<JobBoard />} />
+                  <Route path="/create-job" element={<CreateJob />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </TooltipProvider>
+            </JobProvider>
+          </SearchProvider>
+        </BrowserRouter>
       </AuthProvider>
     </UserProvider>
   </QueryClientProvider>

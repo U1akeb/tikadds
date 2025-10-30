@@ -31,12 +31,19 @@ export function CreatorProfileModal({ creator, open, onOpenChange }: CreatorProf
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg overflow-hidden p-0">
         <DialogHeader className="p-6 pb-3 text-left">
-          <DialogTitle className="text-2xl font-bold">{creator.name}</DialogTitle>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>@{creator.username}</span>
-            <Badge variant="secondary" className="capitalize">
-              {creator.role}
-            </Badge>
+          <div className="space-y-4">
+            <div>
+              <DialogTitle className="text-2xl font-bold">{creator.name}</DialogTitle>
+              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                <span>@{creator.username}</span>
+                <Badge variant="secondary" className="capitalize">
+                  {creator.role}
+                </Badge>
+              </div>
+            </div>
+            <Button className="w-full gradient-primary text-white" onClick={handleViewProfile}>
+              View Full Profile
+            </Button>
           </div>
         </DialogHeader>
         <ScrollArea className="max-h-[70vh]">
@@ -95,10 +102,6 @@ export function CreatorProfileModal({ creator, open, onOpenChange }: CreatorProf
                 </div>
               </div>
             )}
-
-            <Button className="w-full gradient-primary text-white" onClick={handleViewProfile}>
-              View Full Profile
-            </Button>
           </div>
         </ScrollArea>
       </DialogContent>
