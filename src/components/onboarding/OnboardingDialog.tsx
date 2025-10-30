@@ -72,6 +72,12 @@ export function OnboardingDialog() {
     setSelectedCategories([]);
   }, [selectedRole]);
 
+  useEffect(() => {
+    if (step === 3) {
+      setThemeSelected(true);
+    }
+  }, [step]);
+
   const topics = useMemo(() => {
     if (selectedRole === "creator") {
       return CREATOR_TOPICS;
