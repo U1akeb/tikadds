@@ -16,7 +16,10 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [activeQuery, setActiveQuery] = useState("");
   const location = useLocation();
 
-  const isSearchableRoute = useMemo(() => ["/", "/jobs"].includes(location.pathname), [location.pathname]);
+  const isSearchableRoute = useMemo(
+    () => ["/", "/jobs", "/search"].includes(location.pathname),
+    [location.pathname],
+  );
 
   useEffect(() => {
     if (!isSearchableRoute) {
@@ -24,6 +27,16 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       setActiveQuery("");
     }
   }, [isSearchableRoute]);
+
+  useEffect(() => {
+    if (location.pathname !== "/search") {
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    const qParam = (params.get("q") ?? "").trim();
+    setInput(qParam);
+    setActiveQuery(qParam);
+  }, [location.pathname, location.search, setInput, setActiveQuery]);
 
   const handleInput = useCallback((value: string) => {
     setInput(value);

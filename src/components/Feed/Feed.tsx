@@ -6,11 +6,7 @@ import { useUser } from "@/context/UserContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search as SearchIcon, Users, Film, ArrowLeft, ArrowRight } from "lucide-react";
+import { Search as SearchIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSearch } from "@/context/SearchContext";
 
@@ -103,12 +99,10 @@ export function Feed() {
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [selectedCreator, setSelectedCreator] = useState<string | null>(null);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(baseVideos[0]?.id ?? null);
-  const { input: searchInput, setInput: setSearchInput, activeQuery, submit: submitSearch } = useSearch();
+  const { input: searchInput, setInput: setSearchInput, submit: submitSearch, clear } = useSearch();
   const containerRef = useRef<HTMLDivElement>(null);
   const isLoadingMoreRef = useRef(false);
   const activeVideoRef = useRef<string | null>(baseVideos[0]?.id ?? null);
-  const videosSectionRef = useRef<HTMLDivElement | null>(null);
-  const usersSectionRef = useRef<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
   const commentsOpen = selectedVideo !== null;
 
@@ -118,57 +112,6 @@ export function Feed() {
       return acc;
     }, {});
   }, [creators]);
-
-  const normalizedQuery = activeQuery.trim().toLowerCase();
-  const hasQuery = normalizedQuery.length > 0;
-
-  const { filteredCreators, filteredVideos } = useMemo(() => {
-    const matchText = (value?: string | null) =>
-      value ? value.toLowerCase().includes(normalizedQuery) : false;
-
-    const creatorMatches = creators.filter((creator) => {
-      if (!hasQuery) return true;
-      return (
-        matchText(creator.name) ||
-        matchText(creator.username) ||
-        matchText(creator.bio) ||
-        matchText(creator.focus) ||
-        matchText(creator.location)
-      );
-    });
-
-    const searchVideos = creators.flatMap((creator) =>
-      creator.videos.map((video) => ({
-        ...video,
-        creatorId: creator.id,
-        creatorName: creator.name,
-        creatorUsername: creator.username,
-      })),
-    );
-
-    const videoMatches = searchVideos.filter((video) => {
-      if (!hasQuery) return true;
-      return matchText(video.title);
-    });
-
-    return {
-      filteredCreators: creatorMatches,
-      filteredVideos: videoMatches,
-    };
-  }, [creators, hasQuery, normalizedQuery]);
-
-  const scrollToSection = (target: "videos" | "users") => {
-    const element = target === "videos" ? videosSectionRef.current : usersSectionRef.current;
-    element?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  };
-
-  const renderEmptyState = (title: string, description: string) => (
-    <div className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
-      <SearchIcon className="h-6 w-6" />
-      <p className="text-sm font-medium">{title}</p>
-      <p className="px-6 text-center text-xs text-muted-foreground/80">{description}</p>
-    </div>
-  );
 
   useEffect(() => {
     activeVideoRef.current = activeVideoId;
@@ -276,214 +219,75 @@ export function Feed() {
   return (
     <>
       <div className="flex h-[calc(100vh-5rem)] flex-col transition-smooth md:h-screen md:flex-row md:gap-6">
-        <div
-          ref={containerRef}
-          className={cn(
-            "flex-1 overflow-y-scroll scrollbar-hide transition-smooth min-h-0",
-            commentsOpen && !isMobile ? "md:pr-0" : "",
-          )}
+        <div className={cn("flex-1 min-h-0 flex flex-col", commentsOpen && !isMobile ? "md:pr-0" : "")}
         >
-          <div className="mx-auto w-full px-4 pb-10">
-            <div className="hidden md:block">
-              <div className="sticky top-0 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/55 px-4 py-5 backdrop-blur">
-                <form
-                  className="relative flex items-center gap-3"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    submitSearch();
-                  }}
+          <div className="hidden md:block border-b border-border/60 bg-background/85 px-6 py-5">
+            <form
+              className="flex items-center justify-between gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const next = searchInput.trim();
+                if (next.length === 0) {
+                  clear();
+                  navigate("/search");
+                  return;
+                }
+                submitSearch(next);
+                navigate(`/search?q=${encodeURIComponent(next)}`);
+              }}
+            >
+              <div className="relative w-full max-w-xl">
+                <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search creators, campaigns, or videos"
+                  className="w-full rounded-full border-border/60 bg-background/70 pl-11 pr-20 text-sm shadow-sm backdrop-blur"
+                />
+                <button
+                  type="submit"
+                  aria-label="Search"
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-smooth hover:brightness-110"
                 >
-                  <div className="relative flex-1">
-                    <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={searchInput}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setSearchInput(value);
-                        submitSearch(value);
-                      }}
-                      placeholder="Search creators or video titles..."
-                      className="w-full rounded-full border-border/60 bg-background/70 pl-11 pr-16 text-sm shadow-md shadow-black/10 backdrop-blur transition-smooth"
-                    />
-                    <button
-                      type="submit"
-                      aria-label="Search"
-                      className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-smooth hover:brightness-110"
-                    >
-                      <SearchIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                </form>
-                {!hasQuery && (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Start typing to explore creators, videos and collaborations.
-                  </p>
-                )}
+                  <SearchIcon className="h-3.5 w-3.5" />
+                </button>
               </div>
-            </div>
-
-            {hasQuery && (
-              <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-card">
-                  <div className="flex items-center justify-between border-b border-border/60 px-4 py-3 text-xs text-muted-foreground">
-                    <span className="font-medium">Swipe sideways to browse videos or users</span>
-                    <div className="hidden gap-2 md:flex">
-                      <Button variant="outline" size="icon" onClick={() => scrollToSection("videos")}>
-                        <ArrowLeft className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="icon" onClick={() => scrollToSection("users")}>
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth">
-                    <section
-                      ref={videosSectionRef}
-                      className="flex w-full min-w-full snap-center flex-col gap-4 p-5 md:min-w-[560px]"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                            <Film className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <h2 className="text-lg font-semibold">Videos</h2>
-                            <p className="text-xs text-muted-foreground">
-                              {filteredVideos.length} matching result{filteredVideos.length === 1 ? "" : "s"}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant="secondary">{filteredVideos.length}</Badge>
-                      </div>
-
-                      {filteredVideos.length === 0 ? (
-                        renderEmptyState("No videos found", "Try another keyword or check back later.")
-                      ) : (
-                        <ScrollArea className="h-[360px]">
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            {filteredVideos.map((video) => (
-                              <Card key={`${video.creatorId}-${video.id}`} className="overflow-hidden border-border/60">
-                                <div className="relative aspect-video overflow-hidden">
-                                  <img src={video.thumbnail} alt={video.title} className="h-full w-full object-cover" />
-                                </div>
-                                <CardHeader className="space-y-2">
-                                  <CardTitle className="text-base font-semibold leading-tight line-clamp-2">
-                                    {video.title}
-                                  </CardTitle>
-                                  <CardDescription className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <Users className="h-4 w-4" />
-                                    <button
-                                      type="button"
-                                      className="font-medium text-foreground transition-colors hover:text-primary"
-                                      onClick={() => navigate(`/profile?view=${video.creatorUsername}`)}
-                                    >
-                                      @{video.creatorUsername}
-                                    </button>
-                                  </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                  <Button
-                                    className="w-full gradient-primary text-white"
-                                    onClick={() => navigate(`/profile?view=${video.creatorUsername}`)}
-                                  >
-                                    View profile
-                                  </Button>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      )}
-                    </section>
-
-                    <section
-                      ref={usersSectionRef}
-                      className="flex w-full min-w-full snap-center flex-col gap-4 p-5 md:min-w-[560px]"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/10 text-secondary">
-                            <Users className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <h2 className="text-lg font-semibold">Users</h2>
-                            <p className="text-xs text-muted-foreground">
-                              {filteredCreators.length} match{filteredCreators.length === 1 ? "" : "es"}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant="secondary">{filteredCreators.length}</Badge>
-                      </div>
-
-                      {filteredCreators.length === 0 ? (
-                        renderEmptyState("No users found", "Try searching a different name or username.")
-                      ) : (
-                        <ScrollArea className="h-[360px]">
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            {filteredCreators.map((creator) => (
-                              <Card key={creator.id} className="border-border/60">
-                                <CardHeader className="items-center text-center">
-                                  <div className="relative mb-3 h-20 w-20 overflow-hidden rounded-full border-4 border-primary/20">
-                                    <img src={creator.avatar} alt={creator.name} className="h-full w-full object-cover" />
-                                  </div>
-                                  <CardTitle className="text-lg">{creator.name}</CardTitle>
-                                  <CardDescription className="text-sm text-muted-foreground">
-                                    @{creator.username}
-                                  </CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                                  {creator.focus && (
-                                    <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-wide">
-                                      <Badge variant="outline">{creator.focus}</Badge>
-                                    </div>
-                                  )}
-                                  <p className="line-clamp-3 text-center text-muted-foreground/90">{creator.bio}</p>
-                                  <Button
-                                    className="w-full gradient-primary text-white"
-                                    onClick={() => navigate(`/profile?view=${creator.username}`)}
-                                  >
-                                    View profile
-                                  </Button>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      )}
-                    </section>
-                  </div>
-              </div>
-            )}
+            </form>
           </div>
 
-          <div className="flex flex-col snap-y snap-mandatory">
-            {videos.map((video) => {
-              const creator = creatorLookup[video.creatorId];
-              if (!creator) return null;
+          <div
+            ref={containerRef}
+            className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide transition-smooth"
+          >
+            <div className="flex flex-col">
+              {videos.map((video) => {
+                const creator = creatorLookup[video.creatorId];
+                if (!creator) return null;
 
-              if (creator.banInfo?.isBanned) {
+                if (creator.banInfo?.isBanned) {
+                  return (
+                    <div
+                      key={video.id}
+                      data-video-id={video.id}
+                      className="relative flex h-[calc(100vh-5rem)] min-h-[calc(100vh-5rem)] w-full snap-start items-center justify-center bg-background/90 text-center text-sm text-muted-foreground md:h-[100vh] md:min-h-[100vh]"
+                    >
+                      Creator content is unavailable.
+                    </div>
+                  );
+                }
+
                 return (
-                  <div
+                  <VideoCard
                     key={video.id}
-                    data-video-id={video.id}
-                    className="relative flex h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always items-center justify-center bg-background/90 text-center text-sm text-muted-foreground md:h-screen md:min-h-0"
-                  >
-                    Creator content is unavailable.
-                  </div>
+                    {...video}
+                    creator={creator}
+                    onCommentClick={toggleComments}
+                    onProfileClick={() => handleProfileOpen(video.creatorId)}
+                    dataVideoId={video.id}
+                  />
                 );
-              }
-
-              return (
-                <VideoCard
-                  key={video.id}
-                  {...video}
-                  creator={creator}
-                  onCommentClick={toggleComments}
-                  onProfileClick={() => handleProfileOpen(video.creatorId)}
-                  dataVideoId={video.id}
-                />
-              );
-            })}
+              })}
+            </div>
           </div>
         </div>
 

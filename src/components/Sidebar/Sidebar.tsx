@@ -85,13 +85,21 @@ function MobileNav({
   currentPath: string;
 }) {
   const { input, setInput, submit } = useSearch();
+  const navigate = useNavigate();
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    submit();
+    const next = input.trim();
+    if (!next) {
+      submit("");
+      navigate("/search");
+      return;
+    }
+    submit(next);
+    navigate(`/search?q=${encodeURIComponent(next)}`);
   };
 
-  const shouldShowSearch = currentPath === "/" || currentPath === "/jobs";
+  const shouldShowSearch = currentPath === "/" || currentPath === "/jobs" || currentPath === "/search";
 
   return (
     <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border bg-sidebar/90 px-4 py-3 backdrop-blur md:hidden">
@@ -107,7 +115,6 @@ function MobileNav({
                 onChange={(event) => {
                   const value = event.target.value;
                   setInput(value);
-                  submit(value);
                 }}
                 placeholder="Search"
                 className="w-36 rounded-full bg-background/80 pl-9 pr-10 text-sm shadow-sm backdrop-blur"

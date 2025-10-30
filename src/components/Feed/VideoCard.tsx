@@ -122,7 +122,7 @@ export function VideoCard({
 
   return (
     <div
-      className="relative h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always md:h-screen md:min-h-0"
+      className="relative h-[calc(100vh-5rem)] min-h-[calc(100vh-5rem)] w-full snap-start snap-always md:h-[100vh] md:min-h-[100vh]"
       data-video-id={dataVideoId ?? id}
     >
       <div className="absolute inset-0 bg-card" onDoubleClick={handleDoubleClick}>
