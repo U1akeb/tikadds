@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type ComponentType } from "react";
-import { Home, Briefcase, User, Menu, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { Home, Briefcase, User, Menu, LogOut, Settings as SettingsIcon, Search as SearchIcon } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -166,6 +166,7 @@ export function Sidebar() {
       { name: "Home", icon: Home, path: "/" },
       { name: "Profile", icon: User, path: "/profile", requiresAuth: true },
       { name: "Job Board", icon: Briefcase, path: "/jobs" },
+      { name: "Search", icon: SearchIcon, path: "/search" },
       { name: "Settings", icon: SettingsIcon, path: "/settings", requiresAuth: true },
     ];
 
