@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search as SearchIcon, Film, Users } from "lucide-react";
 import { useSearch } from "@/context/SearchContext";
 import { useUser } from "@/context/UserContext";
@@ -142,38 +141,36 @@ export default function Search() {
                 {filteredVideos.length === 0 ? (
                   renderEmptyState("No videos found", "Try another keyword or check back later.")
                 ) : (
-                  <ScrollArea className="max-h-[480px] rounded-xl border border-border/60">
-                    <div className="grid gap-4 p-4 sm:grid-cols-2">
-                      {filteredVideos.map((video) => (
-                        <Card key={`${video.creatorId}-${video.id}`} className="overflow-hidden border-border/60">
-                          <div className="relative aspect-video overflow-hidden">
-                            <img src={video.thumbnail} alt={video.title} className="h-full w-full object-cover" />
-                          </div>
-                          <CardHeader className="space-y-2">
-                            <CardTitle className="line-clamp-2 text-base font-semibold leading-tight">{video.title}</CardTitle>
-                            <CardDescription className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <Users className="h-4 w-4" />
-                              <button
-                                type="button"
-                                className="font-medium text-foreground transition-colors hover:text-primary"
-                                onClick={() => navigate(`/profile?view=${video.creatorUsername}`)}
-                              >
-                                @{video.creatorUsername}
-                              </button>
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            <Button
-                              className="w-full gradient-primary text-white"
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {filteredVideos.map((video) => (
+                      <Card key={`${video.creatorId}-${video.id}`} className="overflow-hidden border-border/60">
+                        <div className="relative aspect-video overflow-hidden">
+                          <img src={video.thumbnail} alt={video.title} className="h-full w-full object-cover" />
+                        </div>
+                        <CardHeader className="space-y-2">
+                          <CardTitle className="line-clamp-2 text-base font-semibold leading-tight">{video.title}</CardTitle>
+                          <CardDescription className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Users className="h-4 w-4" />
+                            <button
+                              type="button"
+                              className="font-medium text-foreground transition-colors hover:text-primary"
                               onClick={() => navigate(`/profile?view=${video.creatorUsername}`)}
                             >
-                              View profile
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </ScrollArea>
+                              @{video.creatorUsername}
+                            </button>
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <Button
+                            className="w-full gradient-primary text-white"
+                            onClick={() => navigate(`/profile?view=${video.creatorUsername}`)}
+                          >
+                            View profile
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 )}
               </section>
 
@@ -194,35 +191,33 @@ export default function Search() {
                 {filteredCreators.length === 0 ? (
                   renderEmptyState("No creators found", "Try searching a different name or brand.")
                 ) : (
-                  <ScrollArea className="max-h-[480px] rounded-xl border border-border/60">
-                    <div className="grid gap-4 p-4 sm:grid-cols-2">
-                      {filteredCreators.map((creator) => (
-                        <Card key={creator.id} className="border-border/60">
-                          <CardHeader className="items-center text-center">
-                            <div className="relative mb-3 h-20 w-20 overflow-hidden rounded-full border-4 border-primary/20">
-                              <img src={creator.avatar} alt={creator.name} className="h-full w-full object-cover" />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {filteredCreators.map((creator) => (
+                      <Card key={creator.id} className="border-border/60">
+                        <CardHeader className="items-center text-center">
+                          <div className="relative mb-3 h-20 w-20 overflow-hidden rounded-full border-4 border-primary/20">
+                            <img src={creator.avatar} alt={creator.name} className="h-full w-full object-cover" />
+                          </div>
+                          <CardTitle className="text-lg">{creator.name}</CardTitle>
+                          <CardDescription className="text-sm text-muted-foreground">@{creator.username}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm text-muted-foreground">
+                          {creator.focus && (
+                            <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-wide">
+                              <Badge variant="outline">{creator.focus}</Badge>
                             </div>
-                            <CardTitle className="text-lg">{creator.name}</CardTitle>
-                            <CardDescription className="text-sm text-muted-foreground">@{creator.username}</CardDescription>
-                          </CardHeader>
-                          <CardContent className="space-y-3 text-sm text-muted-foreground">
-                            {creator.focus && (
-                              <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-wide">
-                                <Badge variant="outline">{creator.focus}</Badge>
-                              </div>
-                            )}
-                            <p className="line-clamp-3 text-center text-muted-foreground/90">{creator.bio}</p>
-                            <Button
-                              className="w-full gradient-primary text-white"
-                              onClick={() => navigate(`/profile?view=${creator.username}`)}
-                            >
-                              View profile
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </ScrollArea>
+                          )}
+                          <p className="line-clamp-3 text-center text-muted-foreground/90">{creator.bio}</p>
+                          <Button
+                            className="w-full gradient-primary text-white"
+                            onClick={() => navigate(`/profile?view=${creator.username}`)}
+                          >
+                            View profile
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 )}
               </section>
             </div>
