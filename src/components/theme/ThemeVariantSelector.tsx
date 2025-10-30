@@ -26,10 +26,10 @@ const VARIANTS: Array<{
     preview: "linear-gradient(135deg, hsl(158 89% 52%), hsl(45 96% 53%))",
   },
   {
-    id: "velvet",
-    label: "Velvet",
-    description: "Lush rose hues blended with warm ember tones.",
-    preview: "linear-gradient(135deg, hsl(330 77% 62%), hsl(28 90% 60%))",
+    id: "midnight",
+    label: "Midnight",
+    description: "Deep sapphire and aurora teal for a cinematic dark finish.",
+    preview: "linear-gradient(135deg, hsl(220 85% 58%), hsl(168 78% 52%))",
   },
 ];
 

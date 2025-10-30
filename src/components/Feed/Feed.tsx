@@ -246,35 +246,43 @@ export function Feed() {
             commentsOpen && !isMobile ? "md:pr-0" : "",
           )}
         >
-          <div className="mx-auto w-full px-4 py-6">
-            <div className="hidden md:flex md:items-center md:justify-between md:gap-4">
-              <form
-                className="relative w-full md:w-[40%] md:max-w-md"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  submitSearch();
-                }}
-              >
-                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Search creators or video titles..."
-                  className="pl-10 pr-12"
-                />
-                <button
-                  type="submit"
-                  aria-label="Search"
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground transition-smooth hover:brightness-110"
+          <div className="mx-auto w-full px-4 pb-10">
+            <div className="hidden md:block">
+              <div className="sticky top-0 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/55 px-4 py-5 backdrop-blur">
+                <form
+                  className="relative flex items-center gap-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitSearch();
+                  }}
                 >
-                  <SearchIcon className="h-4 w-4" />
-                </button>
-              </form>
-              {!hasQuery && (
-                <p className="text-xs text-muted-foreground">
-                  Search creators or video titles to see results here.
-                </p>
-              )}
+                  <div className="relative flex-1">
+                    <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={searchInput}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSearchInput(value);
+                        submitSearch(value);
+                      }}
+                      placeholder="Search creators or video titles..."
+                      className="w-full rounded-full border-border/60 bg-background/70 pl-11 pr-16 text-sm shadow-md shadow-black/10 backdrop-blur transition-smooth"
+                    />
+                    <button
+                      type="submit"
+                      aria-label="Search"
+                      className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-smooth hover:brightness-110"
+                    >
+                      <SearchIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </form>
+                {!hasQuery && (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Start typing to explore creators, videos and collaborations.
+                  </p>
+                )}
+              </div>
             </div>
 
             {hasQuery && (

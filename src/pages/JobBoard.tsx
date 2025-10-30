@@ -120,8 +120,8 @@ export default function JobBoard() {
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       <main className="flex-1 pt-20 md:pt-0 md:pl-[clamp(12rem,12.5vw,16rem)]">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
-          <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-8">
+          <header className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border/60 bg-background/60 px-4 py-6 backdrop-blur md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-3xl font-bold md:text-4xl">Campaign Job Board</h1>
               <p className="text-muted-foreground mt-2">
@@ -131,22 +131,26 @@ export default function JobBoard() {
 
             <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end md:gap-4">
               <form
-                className="relative w-full md:w-64"
+                className="relative w-full md:w-72"
                 onSubmit={handleSearchSubmit}
                 role="search"
               >
-                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={input}
-                  onChange={(event) => setInput(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setInput(value);
+                    submit(value);
+                  }}
                   placeholder="Search jobs"
-                  className="w-full rounded-full bg-background/70 pl-9 pr-9 text-sm"
+                  className="w-full rounded-full border-border/60 bg-background/70 pl-12 pr-20 text-sm shadow-sm backdrop-blur"
                 />
                 {normalizedQuery && (
                   <button
                     type="button"
                     onClick={handleClearSearch}
-                    className="absolute right-8 top-1/2 -translate-y-1/2 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                    className="absolute right-12 top-1/2 -translate-y-1/2 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground"
                   >
                     Clear
                   </button>
@@ -154,7 +158,7 @@ export default function JobBoard() {
                 <button
                   type="submit"
                   aria-label="Search job board"
-                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm"
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm"
                 >
                   <SearchIcon className="h-3.5 w-3.5" />
                 </button>

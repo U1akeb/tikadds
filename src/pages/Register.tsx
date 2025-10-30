@@ -5,13 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { useThemeVariant } from "@/context/ThemeVariantContext";
-import { ThemeVariantSelector } from "@/components/theme/ThemeVariantSelector";
 
 const Register = () => {
   const navigate = useNavigate();
   const { registerWithEmail, loginWithProvider, continueAsGuest } = useAuth();
-  const { variant } = useThemeVariant();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -143,20 +140,6 @@ const Register = () => {
                 />
               </div>
             </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-medium">Choose your dark mode vibe</label>
-                <p className="text-xs text-muted-foreground">
-                  This palette will be applied whenever you switch to dark mode.
-                </p>
-              </div>
-              <ThemeVariantSelector />
-              <p className="text-xs text-muted-foreground">
-                Currently selected: <span className="font-semibold text-foreground capitalize">{variant}</span>
-              </p>
-            </div>
-
             <Button
               type="submit"
               className="w-full gradient-primary text-white"

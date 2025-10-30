@@ -104,7 +104,11 @@ function MobileNav({
               <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setInput(value);
+                  submit(value);
+                }}
                 placeholder="Search"
                 className="w-36 rounded-full bg-background/80 pl-9 pr-10 text-sm shadow-sm backdrop-blur"
               />

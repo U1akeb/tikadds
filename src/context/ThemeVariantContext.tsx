@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-export type DarkThemeVariant = "aurora" | "cosmic" | "neon" | "velvet";
+export type DarkThemeVariant = "aurora" | "cosmic" | "neon" | "midnight";
 
 const THEME_VARIANT_STORAGE_KEY = "adspark-dark-variant";
 
@@ -23,7 +23,7 @@ export function ThemeVariantProvider({ children }: { children: ReactNode }) {
       return "aurora";
     }
     const stored = window.localStorage.getItem(THEME_VARIANT_STORAGE_KEY);
-    if (stored === "cosmic" || stored === "neon" || stored === "velvet") {
+    if (stored === "cosmic" || stored === "neon" || stored === "midnight") {
       return stored;
     }
     return "aurora";
