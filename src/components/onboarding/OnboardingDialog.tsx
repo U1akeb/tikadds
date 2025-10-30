@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useUser } from "@/context/UserContext";
 import { toast } from "sonner";
 import { ThemeVariantSelector } from "@/components/theme/ThemeVariantSelector";
-import { useThemeVariant } from "@/context/ThemeVariantContext";
+import { useThemeVariant, type DarkThemeVariant } from "@/context/ThemeVariantContext";
 import { useNavigate } from "react-router-dom";
 
 const CREATOR_TOPICS = [
@@ -72,12 +72,6 @@ export function OnboardingDialog() {
     setSelectedCategories([]);
   }, [selectedRole]);
 
-  useEffect(() => {
-    if (step === 3) {
-      setThemeSelected(true);
-    }
-  }, [step]);
-
   const topics = useMemo(() => {
     if (selectedRole === "creator") {
       return CREATOR_TOPICS;
@@ -101,11 +95,28 @@ export function OnboardingDialog() {
     });
   };
 
-  const handleComplete = () => {
-    completeOnboarding({ role: selectedRole, categories: selectedCategories });
+  const finalizeOnboarding = () => {
+    completeOnboarding({ role: selectedRole!, categories: selectedCategories });
     toast.success("Preferences saved! You can adjust these later in Settings.");
     setOpen(false);
     navigate("/");
+  };
+
+  const handleComplete = () => {
+    if (!selectedRole) {
+      toast.error("Please choose how you'd like to use Tikadds");
+      return;
+    }
+    if (selectedCategories.length === 0) {
+      toast.error("Pick at least one category to tailor your experience");
+      return;
+    }
+    if (!themeSelected) {
+      toast.error("Select a theme to finish onboarding");
+      return;
+    }
+
+    finalizeOnboarding();
   };
 
   const handleNext = () => {
@@ -125,20 +136,28 @@ export function OnboardingDialog() {
       setStep(3);
       return;
     }
-    handleComplete();
+    if (!selectedRole || selectedCategories.length === 0) {
+      toast.error("Complete the earlier steps to continue");
+      return;
+    }
+    finalizeOnboarding();
   };
 
   const handleBack = () => {
     if (step === 1) {
       return;
     }
-    if (step === 3 && selectedCategories.length === 0) {
-      setStep(1);
-      return;
+    if (step === 3) {
+      setThemeSelected(false);
     }
-    setStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev));
   };
 
+
+  const handleThemeSelect = (value: DarkThemeVariant) => {
+    setVariant(value);
+    setThemeSelected(true);
+    handleComplete();
+  };
   return (
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent className="max-w-2xl space-y-6 border-border/60 bg-card/95 backdrop-blur">
@@ -224,13 +243,7 @@ export function OnboardingDialog() {
                 This palette appears whenever you switch to dark mode. You can change it later under Settings.
               </p>
             </div>
-            <ThemeVariantSelector
-              className="max-w-2xl"
-              onSelect={(value) => {
-                setVariant(value);
-                setThemeSelected(true);
-              }}
-            />
+            <ThemeVariantSelector className="max-w-2xl" onSelect={handleThemeSelect} />
             <p className="text-xs text-muted-foreground">
               Currently selected: <span className="font-semibold capitalize text-foreground">{variant}</span>
             </p>
