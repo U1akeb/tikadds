@@ -33,7 +33,13 @@ const VARIANTS: Array<{
   },
 ];
 
-export function ThemeVariantSelector({ className }: { className?: string }) {
+export function ThemeVariantSelector({
+  className,
+  onSelect,
+}: {
+  className?: string;
+  onSelect?: (variant: DarkThemeVariant) => void;
+}) {
   const { variant, setVariant } = useThemeVariant();
 
   return (
@@ -44,7 +50,10 @@ export function ThemeVariantSelector({ className }: { className?: string }) {
           <button
             key={item.id}
             type="button"
-            onClick={() => setVariant(item.id)}
+            onClick={() => {
+              setVariant(item.id);
+              onSelect?.(item.id);
+            }}
             className={cn(
               "group flex flex-col gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4 text-left transition-smooth hover:border-primary/50 hover:bg-muted/30",
               isActive && "border-primary bg-primary/10 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]"

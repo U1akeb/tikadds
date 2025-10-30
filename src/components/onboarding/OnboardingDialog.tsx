@@ -8,6 +8,7 @@ import { useUser } from "@/context/UserContext";
 import { toast } from "sonner";
 import { ThemeVariantSelector } from "@/components/theme/ThemeVariantSelector";
 import { useThemeVariant } from "@/context/ThemeVariantContext";
+import { useNavigate } from "react-router-dom";
 
 const CREATOR_TOPICS = [
   "Lifestyle",
@@ -42,11 +43,13 @@ const ADVERTISER_TOPICS = [
 export function OnboardingDialog() {
   const { sessionMode } = useAuth();
   const { currentUser, completeOnboarding } = useUser();
-  const { variant } = useThemeVariant();
+  const { variant, setVariant } = useThemeVariant();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState<"creator" | "advertiser" | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [themeSelected, setThemeSelected] = useState(false);
 
   useEffect(() => {
     if (sessionMode === "auth" && !currentUser.onboardingCompleted) {
@@ -61,6 +64,7 @@ export function OnboardingDialog() {
       setStep(1);
       setSelectedRole(null);
       setSelectedCategories([]);
+      setThemeSelected(false);
     }
   }, [open]);
 
@@ -92,18 +96,10 @@ export function OnboardingDialog() {
   };
 
   const handleComplete = () => {
-    if (!selectedRole) {
-      toast.error("Please choose how you'd like to use Tikadds");
-      return;
-    }
-    if (selectedCategories.length === 0) {
-      toast.error("Pick at least one category to tailor your experience");
-      return;
-    }
-
     completeOnboarding({ role: selectedRole, categories: selectedCategories });
     toast.success("Preferences saved! You can adjust these later in Settings.");
     setOpen(false);
+    navigate("/");
   };
 
   const handleNext = () => {
@@ -128,6 +124,10 @@ export function OnboardingDialog() {
 
   const handleBack = () => {
     if (step === 1) {
+      return;
+    }
+    if (step === 3 && selectedCategories.length === 0) {
+      setStep(1);
       return;
     }
     setStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev));
@@ -218,7 +218,13 @@ export function OnboardingDialog() {
                 This palette appears whenever you switch to dark mode. You can change it later under Settings.
               </p>
             </div>
-            <ThemeVariantSelector />
+            <ThemeVariantSelector
+              className="max-w-2xl"
+              onSelect={(value) => {
+                setVariant(value);
+                setThemeSelected(true);
+              }}
+            />
             <p className="text-xs text-muted-foreground">
               Currently selected: <span className="font-semibold capitalize text-foreground">{variant}</span>
             </p>
@@ -229,7 +235,11 @@ export function OnboardingDialog() {
           <Button variant="outline" onClick={handleBack} disabled={step === 1}>
             Back
           </Button>
-          <Button className="gradient-primary text-white" onClick={handleNext}>
+          <Button
+            className="gradient-primary text-white"
+            onClick={handleNext}
+            disabled={(step === 1 && !selectedRole) || (step === 2 && selectedCategories.length === 0) || (step === 3 && !themeSelected)}
+          >
             {step === 3 ? "Finish" : "Continue"}
           </Button>
         </div>
