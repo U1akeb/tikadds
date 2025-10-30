@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search as SearchIcon, Film, Users } from "lucide-react";
+import { Search as SearchIcon, Film, Users, Briefcase } from "lucide-react";
 import { useSearch } from "@/context/SearchContext";
 import { useUser } from "@/context/UserContext";
+import { useJobs } from "@/context/JobContext";
 
 function renderEmptyState(title: string, description: string) {
   return (
@@ -22,23 +23,43 @@ function renderEmptyState(title: string, description: string) {
 export default function Search() {
   const { input, setInput, submit, activeQuery, clear } = useSearch();
   const { creators } = useUser();
+  const { jobs } = useJobs();
   const navigate = useNavigate();
 
   const normalizedQuery = activeQuery.trim().toLowerCase();
   const hasQuery = normalizedQuery.length > 0;
 
-  const { filteredCreators, filteredVideos } = useMemo(() => {
+  const jobRequesterIds = useMemo(() => new Set(jobs.map((job) => job.requesterId)), [jobs]);
+
+  const { filteredCreators, filteredAdvertisers, filteredVideos } = useMemo(() => {
     const matchText = (value?: string | null) => (value ? value.toLowerCase().includes(normalizedQuery) : false);
 
-    const creatorMatches = creators.filter((creator) => {
-      if (!hasQuery) return false;
-      return (
-        matchText(creator.name) ||
-        matchText(creator.username) ||
-        matchText(creator.bio) ||
-        matchText(creator.focus) ||
-        matchText(creator.location)
-      );
+    const creatorMatches: typeof creators = [];
+    const advertiserMatches: typeof creators = [];
+
+    creators.forEach((profile) => {
+      if (!hasQuery) {
+        return;
+      }
+
+      const matchesProfile =
+        matchText(profile.name) ||
+        matchText(profile.username) ||
+        matchText(profile.bio) ||
+        matchText(profile.focus) ||
+        matchText(profile.location);
+
+      if (!matchesProfile) {
+        return;
+      }
+
+      const isAdvertiserCandidate = profile.role === "advertiser" || jobRequesterIds.has(profile.id);
+
+      if (isAdvertiserCandidate) {
+        advertiserMatches.push(profile);
+      } else {
+        creatorMatches.push(profile);
+      }
     });
 
     const searchVideos = creators.flatMap((creator) =>
@@ -57,9 +78,10 @@ export default function Search() {
 
     return {
       filteredCreators: creatorMatches,
+      filteredAdvertisers: advertiserMatches,
       filteredVideos: videoMatches,
     };
-  }, [creators, hasQuery, normalizedQuery]);
+  }, [creators, hasQuery, normalizedQuery, jobRequesterIds]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -213,6 +235,55 @@ export default function Search() {
                             onClick={() => navigate(`/profile?view=${creator.username}`)}
                           >
                             View profile
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+                      <Briefcase className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <h2 className="text-lg font-semibold">Advertisers</h2>
+                      <p className="text-xs text-muted-foreground">{filteredAdvertisers.length} match{filteredAdvertisers.length === 1 ? "" : "es"}</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary">{filteredAdvertisers.length}</Badge>
+                </div>
+
+                {filteredAdvertisers.length === 0 ? (
+                  renderEmptyState("No advertisers found", "Try a different brand, agency, or campaign keyword.")
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {filteredAdvertisers.map((advertiser) => (
+                      <Card key={advertiser.id} className="border-border/60">
+                        <CardHeader className="items-center text-center">
+                          <div className="relative mb-3 h-20 w-20 overflow-hidden rounded-full border-4 border-secondary/20">
+                            <img src={advertiser.avatar} alt={advertiser.name} className="h-full w-full object-cover" />
+                          </div>
+                          <CardTitle className="text-lg">{advertiser.name}</CardTitle>
+                          <CardDescription className="text-sm text-muted-foreground">@{advertiser.username}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm text-muted-foreground">
+                          {advertiser.stats?.jobsPosted ? (
+                            <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-wide text-secondary">
+                              {advertiser.stats.jobsPosted} job{advertiser.stats.jobsPosted === 1 ? "" : "s"} posted
+                            </div>
+                          ) : null}
+                          <p className="line-clamp-3 text-center text-muted-foreground/90">
+                            {advertiser.bio || "Campaign sponsor looking for fresh creator partnerships."}
+                          </p>
+                          <Button
+                            className="w-full gradient-secondary text-white"
+                            onClick={() => navigate(`/profile?view=${advertiser.username}`)}
+                          >
+                            View advertiser profile
                           </Button>
                         </CardContent>
                       </Card>

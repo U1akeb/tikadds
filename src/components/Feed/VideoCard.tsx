@@ -47,7 +47,9 @@ export function VideoCard({
   const isSelf = creator.id === authUser?.creatorId;
 
   useEffect(() => {
-    setLocalFollowing(following);
+    if (following) {
+      setLocalFollowing(true);
+    }
   }, [following]);
 
   const displayFollowing = isSelf || localFollowing;
