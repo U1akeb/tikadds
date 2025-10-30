@@ -61,6 +61,39 @@ const baseVideos: VideoItem[] = [
     comments: 478,
     shares: 124,
   },
+  {
+    id: "video-4",
+    creatorId: "spotlight-brand",
+    videoUrl:
+      "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExa2Rud2FzdTVkaTdpMW1lbmttb2hwMXN3bHhybGxsajd6YXZudWl2NSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/3o7btPCcdNniyf0ArS/giphy.mp4",
+    username: "spotlight",
+    description: "Spotlighting this week's most creative food collab. 🍜✨",
+    likes: 7600,
+    comments: 188,
+    shares: 92,
+  },
+  {
+    id: "video-5",
+    creatorId: "creator-pro",
+    videoUrl:
+      "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExMWp0YzM0Z293NHJidXB3NDlsZ3F2MnRqNXA2dWtwYmN0M3NjdHF5ciZlcD12MV9naWZzX3NlYXJjaCZjdD1n/l0HlQ7LRalQpMtmsA/giphy.mp4",
+    username: "creativepro",
+    description: "Motion graphics concept for a tech-focused launch teaser.",
+    likes: 11240,
+    comments: 264,
+    shares: 118,
+  },
+  {
+    id: "video-6",
+    creatorId: "ad-genius",
+    videoUrl:
+      "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExMnVoOW1wemRrc2YrYWZnbzV1ajJkMzEyMXAxNjZvbTBnaWlpbnhqYiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/26u4nJPf0JtQPdStq/giphy.mp4",
+    username: "adgenius",
+    description: "Looping GIF concepts for a high-energy sports brand sprint.",
+    likes: 9800,
+    comments: 236,
+    shares: 134,
+  },
 ];
 
 export function Feed() {
@@ -140,6 +173,10 @@ export function Feed() {
   useEffect(() => {
     activeVideoRef.current = activeVideoId;
   }, [activeVideoId]);
+
+  useEffect(() => {
+    containerRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, []);
 
   useEffect(() => {
     if (!activeVideoId && videos.length > 0) {
@@ -242,7 +279,7 @@ export function Feed() {
         <div
           ref={containerRef}
           className={cn(
-            "flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide transition-smooth min-h-0",
+            "flex-1 overflow-y-scroll scrollbar-hide transition-smooth min-h-0",
             commentsOpen && !isMobile ? "md:pr-0" : "",
           )}
         >
@@ -419,33 +456,35 @@ export function Feed() {
             )}
           </div>
 
-          {videos.map((video) => {
-            const creator = creatorLookup[video.creatorId];
-            if (!creator) return null;
+          <div className="flex flex-col snap-y snap-mandatory">
+            {videos.map((video) => {
+              const creator = creatorLookup[video.creatorId];
+              if (!creator) return null;
 
-            if (creator.banInfo?.isBanned) {
+              if (creator.banInfo?.isBanned) {
+                return (
+                  <div
+                    key={video.id}
+                    data-video-id={video.id}
+                    className="relative flex h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always items-center justify-center bg-background/90 text-center text-sm text-muted-foreground md:h-screen md:min-h-0"
+                  >
+                    Creator content is unavailable.
+                  </div>
+                );
+              }
+
               return (
-                <div
+                <VideoCard
                   key={video.id}
-                  data-video-id={video.id}
-                  className="relative flex h-full min-h-[calc(100vh-5rem)] w-full snap-start snap-always items-center justify-center bg-background/90 text-center text-sm text-muted-foreground md:h-screen md:min-h-0"
-                >
-                  Creator content is unavailable.
-                </div>
+                  {...video}
+                  creator={creator}
+                  onCommentClick={toggleComments}
+                  onProfileClick={() => handleProfileOpen(video.creatorId)}
+                  dataVideoId={video.id}
+                />
               );
-            }
-
-            return (
-              <VideoCard
-                key={video.id}
-                {...video}
-                creator={creator}
-                onCommentClick={toggleComments}
-                onProfileClick={() => handleProfileOpen(video.creatorId)}
-                dataVideoId={video.id}
-              />
-            );
-          })}
+            })}
+          </div>
         </div>
 
         <Comments

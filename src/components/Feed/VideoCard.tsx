@@ -42,6 +42,15 @@ export function VideoCard({
   const { toggleFollow, isFollowing } = useUser();
   const { authUser } = useAuth();
   const navigate = useNavigate();
+  const following = isFollowing(creator.id);
+  const [localFollowing, setLocalFollowing] = useState(following);
+  const isSelf = creator.id === authUser?.creatorId;
+
+  useEffect(() => {
+    setLocalFollowing(following);
+  }, [following]);
+
+  const displayFollowing = isSelf || localFollowing;
 
   useEffect(() => {
     setShareCount(shares);
@@ -95,8 +104,6 @@ export function VideoCard({
     setTimeout(() => setShowHeart(false), 1000);
   };
 
-  const alreadyFollowing = creator.id === authUser?.creatorId || isFollowing(creator.id);
-
   const handleFollow = async () => {
     if (!authUser) {
       toast.info("Sign in to follow creators");
@@ -104,10 +111,11 @@ export function VideoCard({
       return;
     }
 
-    if (alreadyFollowing) {
+    if (displayFollowing) {
       return;
     }
 
+    setLocalFollowing(true);
     await toggleFollow(creator.id);
     toast.success(`You're now following ${creator.name}`);
   };
@@ -155,12 +163,12 @@ export function VideoCard({
               size="sm"
               className={cn(
                 "border-0 h-8",
-                alreadyFollowing ? "bg-muted text-muted-foreground" : "gradient-primary text-white"
+                displayFollowing ? "bg-muted text-muted-foreground" : "gradient-primary text-white"
               )}
               onClick={handleFollow}
-              disabled={alreadyFollowing}
+              disabled={displayFollowing}
             >
-              {alreadyFollowing ? "Following" : "Follow"}
+              {displayFollowing ? "Following" : "Follow"}
             </Button>
             <Button size="sm" variant="outline" className="h-8" onClick={onProfileClick}>
               View profile
