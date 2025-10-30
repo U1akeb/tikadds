@@ -6,6 +6,7 @@ import { CreatorProfile } from "@/context/UserContext";
 import { toast } from "sonner";
 import { useUser } from "@/context/UserContext";
 import { useAuth } from "@/context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 interface VideoCardProps {
   id: string;
@@ -40,6 +41,7 @@ export function VideoCard({
   const [shareCount, setShareCount] = useState(shares);
   const { toggleFollow, isFollowing } = useUser();
   const { authUser } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     setShareCount(shares);
@@ -98,6 +100,7 @@ export function VideoCard({
   const handleFollow = async () => {
     if (!authUser) {
       toast.info("Sign in to follow creators");
+      navigate("/login");
       return;
     }
 

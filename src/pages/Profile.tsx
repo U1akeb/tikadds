@@ -116,6 +116,15 @@ export default function Profile() {
     void toggleFollow(profileUser.id);
   };
 
+  const handleOpenChat = () => {
+    if (!authUser) {
+      toast.info("Sign in to message creators");
+      navigate("/login");
+      return;
+    }
+    setIsChatOpen(true);
+  };
+
   const handleAdminDeleteAccount = () => {
     if (!isAdmin || isOwnProfile) return;
     const confirmed = window.confirm(`Delete @${profileUser.username}'s account? This cannot be undone.`);
@@ -203,7 +212,7 @@ export default function Profile() {
                         <UserPlus className="mr-2 h-4 w-4" />
                         {alreadyFollowing ? "Following" : "Follow"}
                       </Button>
-                      <Button variant="outline" onClick={() => setIsChatOpen(true)}>
+                      <Button variant="outline" onClick={handleOpenChat}>
                         <MessageCircle className="mr-2 h-4 w-4" /> Message
                       </Button>
                       {isAdmin && (
