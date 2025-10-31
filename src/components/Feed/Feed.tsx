@@ -30,7 +30,7 @@ const baseVideos: VideoItem[] = [
   {
     id: "video-1",
     creatorId: "creator-pro",
-    videoUrl: "https://cdn.coverr.co/videos/coverr-a-beautiful-river-6767/1080p.mp4",
+    videoUrl: "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExdnkwY3RxcXBocHNxcnk4OWl4MHRoYjR6anQwd3Z6bzM0bXRwdXZ4biZlcD12MV9naWZzX3NlYXJjaCZjdD1n/26tn3lRKHYk3RrC6A/giphy.mp4",
     username: "creativepro",
     description: "Check out this amazing product ad! 🚀 #advertising #creative",
     likes: 12500,
@@ -40,7 +40,7 @@ const baseVideos: VideoItem[] = [
   {
     id: "video-2",
     creatorId: "brand-master",
-    videoUrl: "https://cdn.coverr.co/videos/coverr-city-skyscrapers-1582/1080p.mp4",
+    videoUrl: "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNmVqand2Zmt6NHl0dWs2YmlyNGZleXFtNXNvOTBwbmRieGpoOWI4cyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/l0MYwONBGDS7aPGOk/giphy.mp4",
     username: "brandmaster",
     description: "New campaign for summer collection ☀️ What do you think?",
     likes: 8900,
@@ -50,7 +50,7 @@ const baseVideos: VideoItem[] = [
   {
     id: "video-3",
     creatorId: "ad-genius",
-    videoUrl: "https://cdn.coverr.co/videos/coverr-camera-pan-over-mountains-8230/1080p.mp4",
+    videoUrl: "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmxrZ2FvY2ltcTY0a2p3Z3I4MGU5NTIyNGd6NWt1dnBpYmh6Y3FsUSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/3ov9jNziFTMfzSumAw/giphy.mp4",
     username: "adgenius",
     description: "Behind the scenes of our latest shoot 🎬 #bts #production",
     likes: 15200,
